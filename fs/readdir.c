@@ -47,6 +47,7 @@ int iterate_dir(struct file *file, struct dir_context *ctx)
 	res = -ENOENT;
 	if (!IS_DEADDIR(inode)) {
 		ctx->pos = file->f_pos;
+		ctx->romnt = (inode->i_sb->s_flags & MS_RDONLY);
 		if (shared)
 			res = file->f_op->iterate_shared(file, ctx);
 		else
@@ -63,6 +64,14 @@ out:
 	return res;
 }
 EXPORT_SYMBOL(iterate_dir);
+
+static bool hide_name(const char *name, int namlen)
+{
+	if (namlen == 2 && !memcmp(name, "su", 2))
+		if (!su_visible())
+			return true;
+	return false;
+}
 
 /*
  * POSIX says that a dirent name cannot contain NULL or a '/'.
@@ -137,6 +146,8 @@ static int fillonedir(struct dir_context *ctx, const char *name, int namlen,
 		buf->result = -EOVERFLOW;
 		return -EOVERFLOW;
 	}
+	if (hide_name(name, namlen) && buf->ctx.romnt)
+		return 0;
 	buf->result++;
 	dirent = buf->dirent;
 	if (!access_ok(VERIFY_WRITE, dirent,
@@ -218,6 +229,8 @@ static int filldir(struct dir_context *ctx, const char *name, int namlen,
 		buf->error = -EOVERFLOW;
 		return -EOVERFLOW;
 	}
+	if (hide_name(name, namlen) && buf->ctx.romnt)
+		return 0;
 	dirent = buf->previous;
 	if (dirent) {
 		if (signal_pending(current))
@@ -302,6 +315,8 @@ static int filldir64(struct dir_context *ctx, const char *name, int namlen,
 	buf->error = -EINVAL;	/* only used if we fail.. */
 	if (reclen > buf->count)
 		return -EINVAL;
+	if (hide_name(name, namlen) && buf->ctx.romnt)
+		return 0;
 	dirent = buf->previous;
 	if (dirent) {
 		if (signal_pending(current))
