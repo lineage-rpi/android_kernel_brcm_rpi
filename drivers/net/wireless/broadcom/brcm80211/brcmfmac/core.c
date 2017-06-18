@@ -527,6 +527,70 @@ static const struct ethtool_ops brcmf_ethtool_ops = {
 	.get_drvinfo = brcmf_ethtool_get_drvinfo,
 };
 
+typedef struct android_wifi_priv_cmd {
+#ifdef CONFIG_COMPAT
+	compat_uptr_t buf;
+#else
+	char *buf;
+#endif
+	int used_len;
+	int total_len;
+} android_wifi_priv_cmd;
+
+#define CMD_SETSUSPENDMODE  "SETSUSPENDMODE"
+#define CMD_BTCOEXMODE		"BTCOEXMODE"
+
+static int brcmf_netdev_ioctl_entry(struct net_device *ndev, struct ifreq *ifr,
+				    int cmd)
+{
+	struct brcmf_if *ifp = netdev_priv(ndev);
+	struct brcmf_pub *drvr = ifp->drvr;
+
+	brcmf_dbg(TRACE, "Enter, idx=%d, cmd=0x%04x\n", ifp->bsscfgidx, cmd);
+
+	if (!drvr->iflist[ifp->bsscfgidx])
+		return -1;
+
+	if (cmd ==  SIOCDEVPRIVATE + 1) {
+		int ret = -EOPNOTSUPP;
+		char *command = NULL;
+		android_wifi_priv_cmd priv_cmd;
+
+		if (!ifr->ifr_data) return -EINVAL;
+		if (copy_from_user(&priv_cmd, ifr->ifr_data, sizeof(android_wifi_priv_cmd)))
+			return -EFAULT;
+
+		command =  kzalloc((priv_cmd.total_len + 1), GFP_KERNEL);
+		if (!command) return -ENOMEM;
+		if (!access_ok(VERIFY_READ, priv_cmd.buf, priv_cmd.total_len)) {
+			ret = -EFAULT;
+			goto exit;
+		}
+		if (copy_from_user(command, (void *)priv_cmd.buf, priv_cmd.total_len)) {
+			ret = -EFAULT;
+			goto exit;
+		}
+		command[priv_cmd.total_len] = '\0';
+
+		if (strncasecmp(command, CMD_SETSUSPENDMODE, strlen(CMD_SETSUSPENDMODE)) == 0) {
+			pr_info("private ioctl SETSUSPENDMODE\n");
+			ret = 0;
+		}
+		else if (strncasecmp(command, CMD_BTCOEXMODE, strlen(CMD_BTCOEXMODE)) == 0) {
+			pr_info("private ioctl BTCOEXMODE\n");
+			ret = 0;
+		}
+
+	exit:
+		if (command) {
+			kfree(command);
+		}
+		return ret;
+	}
+
+	return -EOPNOTSUPP;
+}
+
 static int brcmf_netdev_stop(struct net_device *ndev)
 {
 	struct brcmf_if *ifp = netdev_priv(ndev);
@@ -579,6 +643,7 @@ static int brcmf_netdev_open(struct net_device *ndev)
 static const struct net_device_ops brcmf_netdev_ops_pri = {
 	.ndo_open = brcmf_netdev_open,
 	.ndo_stop = brcmf_netdev_stop,
+	.ndo_do_ioctl = brcmf_netdev_ioctl_entry,
 	.ndo_start_xmit = brcmf_netdev_start_xmit,
 	.ndo_set_mac_address = brcmf_netdev_set_mac_address,
 	.ndo_set_rx_mode = brcmf_netdev_set_multicast_list
