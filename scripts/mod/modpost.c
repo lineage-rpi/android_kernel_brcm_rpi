@@ -145,6 +145,9 @@ static struct module *new_module(const char *modname)
 		p[strlen(p) - 2] = '\0';
 		mod->is_dot_o = 1;
 	}
+	/* strip trailing .lto */
+	if (strends(p, ".lto"))
+		p[strlen(p) - 4] = '\0';
 
 	/* add to list */
 	mod->name = p;
@@ -942,6 +945,7 @@ static const char *const head_sections[] = { ".head.text*", NULL };
 static const char *const linker_symbols[] =
 	{ "__init_begin", "_sinittext", "_einittext", NULL };
 static const char *const optim_symbols[] = { "*.constprop.*", NULL };
+static const char *const cfi_symbols[] = { "*.cfi", NULL };
 
 enum mismatch {
 	TEXT_TO_ANY_INIT,
@@ -1171,6 +1175,17 @@ static const struct sectioncheck *section_mismatch(
  *   whitelisting, which relies on pattern-matching against symbol
  *   names to work.  (One situation where gcc can autogenerate ELF
  *   local symbols is when "-fsection-anchors" is used.)
+ *
+ * Pattern 7:
+ *   With CONFIG_CFI_CLANG, clang appends .cfi to all indirectly called
+ *   functions and creates a function stub with the original name. This
+ *   stub is always placed in .text, even if the actual function with the
+ *   .cfi postfix is in .init.text or .exit.text.
+ *   This pattern is identified by
+ *   tosec   = init or exit section
+ *   fromsec = text section
+ *   tosym   = *.cfi
+ *
  **/
 static int secref_whitelist(const struct sectioncheck *mismatch,
 			    const char *fromsec, const char *fromsym,
@@ -1211,6 +1226,12 @@ static int secref_whitelist(const struct sectioncheck *mismatch,
 
 	/* Check for pattern 6 */
 	if (strstarts(fromsym, ".L"))
+		return 0;
+
+	/* Check for pattern 7 */
+	if (match(fromsec, text_sections) &&
+	    match(tosec, init_exit_sections) &&
+	    match(tosym, cfi_symbols))
 		return 0;
 
 	return 1;
@@ -1939,6 +1960,10 @@ static char *remove_dot(char *s)
 		size_t m = strspn(s + n + 1, "0123456789");
 		if (m && (s[n + m] == '.' || s[n + m] == 0))
 			s[n] = 0;
+
+		/* strip trailing .lto */
+		if (strends(s, ".lto"))
+			s[strlen(s) - 4] = '\0';
 	}
 	return s;
 }
