@@ -1,6 +1,6 @@
 #
 # Automatically generated file; DO NOT EDIT.
-# Linux/arm 4.19.107 Kernel Configuration
+# Linux/arm 4.19.108 Kernel Configuration
 #
 
 #
@@ -3825,6 +3825,7 @@ CONFIG_SND_SOC_I2C_AND_SPI=y
 # CONFIG_SND_SOC_GTM601 is not set
 # CONFIG_SND_SOC_ICS43432 is not set
 # CONFIG_SND_SOC_INNO_RK3036 is not set
+# CONFIG_SND_SOC_MA120X0P is not set
 # CONFIG_SND_SOC_MAX98504 is not set
 # CONFIG_SND_SOC_MAX9867 is not set
 # CONFIG_SND_SOC_MAX98927 is not set
