@@ -15,6 +15,7 @@
 #include "irs1125.h"
 #include <linux/clk.h>
 #include <linux/delay.h>
+#include <linux/firmware.h>
 #include <linux/gpio/consumer.h>
 #include <linux/i2c.h>
 #include <linux/init.h>
@@ -22,13 +23,13 @@
 #include <linux/module.h>
 #include <linux/of_graph.h>
 #include <linux/slab.h>
+#include <linux/types.h>
 #include <linux/videodev2.h>
-#include <linux/firmware.h>
+#include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-fwnode.h>
 #include <media/v4l2-image-sizes.h>
 #include <media/v4l2-mediabus.h>
-#include <media/v4l2-ctrls.h>
 
 #define CHECK_BIT(val, pos) ((val) & BIT(pos))
 
@@ -38,18 +39,19 @@
 
 #define IRS1125_ALTERNATE_FW "irs1125_af.bin"
 
-#define IRS1125_REG_CSICFG       0xA882
-#define IRS1125_REG_DESIGN_STEP	 0xB0AD
-#define IRS1125_REG_EFUSEVAL2	 0xB09F
-#define IRS1125_REG_EFUSEVAL3	 0xB0A0
-#define IRS1125_REG_EFUSEVAL4	 0xB0A1
-#define IRS1125_REG_DMEM_SHADOW	 0xC320
+#define IRS1125_REG_SAFE_RECONFIG	0xA850
+#define IRS1125_REG_CSICFG		0xA882
+#define IRS1125_REG_DESIGN_STEP		0xB0AD
+#define IRS1125_REG_EFUSEVAL2		0xB09F
+#define IRS1125_REG_EFUSEVAL3		0xB0A0
+#define IRS1125_REG_EFUSEVAL4		0xB0A1
+#define IRS1125_REG_DMEM_SHADOW		0xC320
 
-#define IRS1125_DESIGN_STEP_EXPECTED 0x0a12
+#define IRS1125_DESIGN_STEP_EXPECTED	0x0a12
 
 #define IRS1125_ROW_START_DEF		0
 #define IRS1125_COLUMN_START_DEF	0
-#define IRS1125_WINDOW_HEIGHT_DEF	 288
+#define IRS1125_WINDOW_HEIGHT_DEF	288
 #define IRS1125_WINDOW_WIDTH_DEF	352
 
 struct regval_list {
@@ -80,6 +82,7 @@ struct irs1125 {
 	struct v4l2_ctrl *ctrl_numseq;
 
 	int power_count;
+	bool mod_pll_init;
 };
 
 static inline struct irs1125 *to_state(struct v4l2_subdev *sd)
@@ -87,7 +90,53 @@ static inline struct irs1125 *to_state(struct v4l2_subdev *sd)
 	return container_of(sd, struct irs1125, sd);
 }
 
-static struct regval_list irs1125_26MHz[] = {
+static const char *expo_ctrl_names[IRS1125_NUM_SEQ_ENTRIES] = {
+	"safe reconfiguration of exposure of sequence 0",
+	"safe reconfiguration of exposure of sequence 1",
+	"safe reconfiguration of exposure of sequence 2",
+	"safe reconfiguration of exposure of sequence 3",
+	"safe reconfiguration of exposure of sequence 4",
+	"safe reconfiguration of exposure of sequence 5",
+	"safe reconfiguration of exposure of sequence 6",
+	"safe reconfiguration of exposure of sequence 7",
+	"safe reconfiguration of exposure of sequence 8",
+	"safe reconfiguration of exposure of sequence 9",
+	"safe reconfiguration of exposure of sequence 10",
+	"safe reconfiguration of exposure of sequence 11",
+	"safe reconfiguration of exposure of sequence 12",
+	"safe reconfiguration of exposure of sequence 13",
+	"safe reconfiguration of exposure of sequence 14",
+	"safe reconfiguration of exposure of sequence 15",
+	"safe reconfiguration of exposure of sequence 16",
+	"safe reconfiguration of exposure of sequence 17",
+	"safe reconfiguration of exposure of sequence 18",
+	"safe reconfiguration of exposure of sequence 19",
+};
+
+static const char *frame_ctrl_names[IRS1125_NUM_SEQ_ENTRIES] = {
+	"safe reconfiguration of framerate of sequence 0",
+	"safe reconfiguration of framerate of sequence 1",
+	"safe reconfiguration of framerate of sequence 2",
+	"safe reconfiguration of framerate of sequence 3",
+	"safe reconfiguration of framerate of sequence 4",
+	"safe reconfiguration of framerate of sequence 5",
+	"safe reconfiguration of framerate of sequence 6",
+	"safe reconfiguration of framerate of sequence 7",
+	"safe reconfiguration of framerate of sequence 8",
+	"safe reconfiguration of framerate of sequence 9",
+	"safe reconfiguration of framerate of sequence 10",
+	"safe reconfiguration of framerate of sequence 11",
+	"safe reconfiguration of framerate of sequence 12",
+	"safe reconfiguration of framerate of sequence 13",
+	"safe reconfiguration of framerate of sequence 14",
+	"safe reconfiguration of framerate of sequence 15",
+	"safe reconfiguration of framerate of sequence 16",
+	"safe reconfiguration of framerate of sequence 17",
+	"safe reconfiguration of framerate of sequence 18",
+	"safe reconfiguration of framerate of sequence 19",
+};
+
+static struct regval_list irs1125_26mhz[] = {
 	{0xB017, 0x0413},
 	{0xB086, 0x3535},
 	{0xB0AE, 0xEF02},
@@ -153,7 +202,7 @@ static struct regval_list irs1125_26MHz[] = {
 	{0xFFFF, 100}
 };
 
-static struct regval_list irs1125_seq_cfg[] = {
+static struct regval_list irs1125_seq_cfg_init[] = {
 	{0xC3A0, 0x823D},
 	{0xC3A1, 0xB13B},
 	{0xC3A2, 0x0313},
@@ -228,8 +277,7 @@ static struct regval_list irs1125_seq_cfg[] = {
 	{0xC039, 0x0000},
 	{0xC401, 0x0002},
 
-	{0xFFFF, 1},
-	{0xA87C, 0x0001}
+	{0xFFFF, 1}
 };
 
 static int irs1125_write(struct v4l2_subdev *sd, u16 reg, u16 val)
@@ -243,32 +291,40 @@ static int irs1125_write(struct v4l2_subdev *sd, u16 reg, u16 val)
 		dev_err(&client->dev, "%s: i2c write error, reg: %x\n",
 			__func__, reg);
 
+	dev_dbg(&client->dev, "write addr 0x%04x, val 0x%04x\n", reg, val);
 	return ret;
 }
 
 static int irs1125_read(struct v4l2_subdev *sd, u16 reg, u16 *val)
 {
-	int ret;
-	unsigned char data_w[2] = { reg >> 8, reg & 0xff };
-	char rdval[2];
-
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	struct i2c_msg msgs[2];
+	u8 addr_buf[2] = { reg >> 8, reg & 0xff };
+	u8 data_buf[2] = { 0, };
+	int ret;
 
-	ret = i2c_master_send(client, data_w, 2);
-	if (ret < 0) {
-		dev_dbg(&client->dev, "%s: i2c write error, reg: %x\n",
-			__func__, reg);
+	/* Write register address */
+	msgs[0].addr = client->addr;
+	msgs[0].flags = 0;
+	msgs[0].len = ARRAY_SIZE(addr_buf);
+	msgs[0].buf = addr_buf;
+
+	/* Read data from register */
+	msgs[1].addr = client->addr;
+	msgs[1].flags = I2C_M_RD;
+	msgs[1].len = 2;
+	msgs[1].buf = data_buf;
+
+	ret = i2c_transfer(client->adapter, msgs, ARRAY_SIZE(msgs));
+	if (ret != ARRAY_SIZE(msgs)) {
+		if (ret >= 0)
+			ret = -EIO;
 		return ret;
 	}
 
-	ret = i2c_master_recv(client, rdval, 2);
-	if (ret < 0)
-		dev_err(&client->dev, "%s: i2c read error, reg: %x\n",
-			__func__, reg);
+	*val = data_buf[1] | (data_buf[0] << 8);
 
-	*val = rdval[1] | (rdval[0] << 8);
-
-	return ret;
+	return 0;
 }
 
 static int irs1125_write_array(struct v4l2_subdev *sd,
@@ -357,8 +413,8 @@ static int __sensor_init(struct v4l2_subdev *sd)
 		cnt++;
 	}
 
-	ret = irs1125_write_array(sd, irs1125_26MHz,
-				  ARRAY_SIZE(irs1125_26MHz));
+	ret = irs1125_write_array(sd, irs1125_26mhz,
+				  ARRAY_SIZE(irs1125_26mhz));
 	if (ret < 0) {
 		dev_err(&client->dev, "write sensor default regs error\n");
 		return ret;
@@ -408,14 +464,18 @@ static int __sensor_init(struct v4l2_subdev *sd)
 	}
 	release_firmware(fw);
 
-	ret = irs1125_write_array(sd, irs1125_seq_cfg,
-				  ARRAY_SIZE(irs1125_seq_cfg));
+	ret = irs1125_write_array(sd, irs1125_seq_cfg_init,
+				  ARRAY_SIZE(irs1125_seq_cfg_init));
 	if (ret < 0) {
 		dev_err(&client->dev, "write default sequence failed\n");
 		return ret;
 	}
 
-	return 0;
+	irs1125->mod_pll_init = true;
+	v4l2_ctrl_handler_setup(&irs1125->ctrl_handler);
+	irs1125->mod_pll_init = false;
+
+	return irs1125_write(sd, 0xA87C, 0x0001);
 }
 
 static int irs1125_sensor_power(struct v4l2_subdev *sd, int on)
@@ -551,134 +611,146 @@ static int irs1125_s_ctrl(struct v4l2_ctrl *ctrl)
 	struct irs1125 *dev = container_of(ctrl->handler,
 					struct irs1125, ctrl_handler);
 	struct i2c_client *client = v4l2_get_subdevdata(&dev->sd);
-	int err, i;
-	struct irs1125_mod_pll *mod_cur, *mod_new;
-	struct irs1125_seq_cfg *cfg_cur, *cfg_new;
-	u16 addr, val;
-
-	err = 0;
+	int err = 0, i;
 
 	switch (ctrl->id) {
-	case IRS1125_CID_SAFE_RECONFIG:
-	{
-		struct irs1125_illu *illu_cur, *illu_new;
+	case IRS1125_CID_SAFE_RECONFIG_S0_EXPO:
+	case IRS1125_CID_SAFE_RECONFIG_S0_FRAME:
+	case IRS1125_CID_SAFE_RECONFIG_S1_EXPO:
+	case IRS1125_CID_SAFE_RECONFIG_S1_FRAME:
+	case IRS1125_CID_SAFE_RECONFIG_S2_EXPO:
+	case IRS1125_CID_SAFE_RECONFIG_S2_FRAME:
+	case IRS1125_CID_SAFE_RECONFIG_S3_EXPO:
+	case IRS1125_CID_SAFE_RECONFIG_S3_FRAME:
+	case IRS1125_CID_SAFE_RECONFIG_S4_EXPO:
+	case IRS1125_CID_SAFE_RECONFIG_S4_FRAME:
+	case IRS1125_CID_SAFE_RECONFIG_S5_EXPO:
+	case IRS1125_CID_SAFE_RECONFIG_S5_FRAME:
+	case IRS1125_CID_SAFE_RECONFIG_S6_EXPO:
+	case IRS1125_CID_SAFE_RECONFIG_S6_FRAME:
+	case IRS1125_CID_SAFE_RECONFIG_S7_EXPO:
+	case IRS1125_CID_SAFE_RECONFIG_S7_FRAME:
+	case IRS1125_CID_SAFE_RECONFIG_S8_EXPO:
+	case IRS1125_CID_SAFE_RECONFIG_S8_FRAME:
+	case IRS1125_CID_SAFE_RECONFIG_S9_EXPO:
+	case IRS1125_CID_SAFE_RECONFIG_S9_FRAME:
+	case IRS1125_CID_SAFE_RECONFIG_S10_EXPO:
+	case IRS1125_CID_SAFE_RECONFIG_S10_FRAME:
+	case IRS1125_CID_SAFE_RECONFIG_S11_EXPO:
+	case IRS1125_CID_SAFE_RECONFIG_S11_FRAME:
+	case IRS1125_CID_SAFE_RECONFIG_S12_EXPO:
+	case IRS1125_CID_SAFE_RECONFIG_S12_FRAME:
+	case IRS1125_CID_SAFE_RECONFIG_S13_EXPO:
+	case IRS1125_CID_SAFE_RECONFIG_S13_FRAME:
+	case IRS1125_CID_SAFE_RECONFIG_S14_EXPO:
+	case IRS1125_CID_SAFE_RECONFIG_S14_FRAME:
+	case IRS1125_CID_SAFE_RECONFIG_S15_EXPO:
+	case IRS1125_CID_SAFE_RECONFIG_S15_FRAME:
+	case IRS1125_CID_SAFE_RECONFIG_S16_EXPO:
+	case IRS1125_CID_SAFE_RECONFIG_S16_FRAME:
+	case IRS1125_CID_SAFE_RECONFIG_S17_EXPO:
+	case IRS1125_CID_SAFE_RECONFIG_S17_FRAME:
+	case IRS1125_CID_SAFE_RECONFIG_S18_EXPO:
+	case IRS1125_CID_SAFE_RECONFIG_S18_FRAME:
+	case IRS1125_CID_SAFE_RECONFIG_S19_EXPO:
+	case IRS1125_CID_SAFE_RECONFIG_S19_FRAME: {
+		unsigned int offset = ctrl->id -
+			IRS1125_CID_SAFE_RECONFIG_S0_EXPO;
 
-		illu_new = (struct irs1125_illu *)ctrl->p_new.p;
-		illu_cur = (struct irs1125_illu *)ctrl->p_cur.p;
-		for (i = 0; i < IRS1125_NUM_SEQ_ENTRIES; i++) {
-			if (illu_cur[i].exposure != illu_new[i].exposure) {
-				addr = 0xA850 + i * 2;
-				val = illu_new[i].exposure;
-				err = irs1125_write(&dev->sd, addr, val);
-				if (err < 0)
-					break;
-			}
-			if (illu_cur[i].framerate != illu_new[i].framerate) {
-				addr = 0xA851 + i * 2;
-				val = illu_new[i].framerate;
-				err = irs1125_write(&dev->sd, addr, val);
-				if (err < 0)
-					break;
-			}
+		err = irs1125_write(&dev->sd,
+				    IRS1125_REG_SAFE_RECONFIG + offset,
+				    ctrl->val);
+		break;
+	}
+	case IRS1125_CID_MOD_PLL: {
+		struct irs1125_mod_pll *mod_new;
+
+		if (dev->mod_pll_init)
+			break;
+
+		mod_new = (struct irs1125_mod_pll *)ctrl->p_new.p;
+		for (i = 0; i < IRS1125_NUM_MOD_PLLS; i++) {
+			unsigned int pll_offset, ssc_offset;
+
+			pll_offset = i * 3;
+			ssc_offset = i * 5;
+
+			err = irs1125_write(&dev->sd, 0xC3A0 + pll_offset,
+					    mod_new[i].pllcfg1);
+			if (err < 0)
+				break;
+
+			err = irs1125_write(&dev->sd, 0xC3A1 + pll_offset,
+					    mod_new[i].pllcfg2);
+			if (err < 0)
+				break;
+
+			err = irs1125_write(&dev->sd, 0xC3A2 + pll_offset,
+					    mod_new[i].pllcfg3);
+			if (err < 0)
+				break;
+
+			err = irs1125_write(&dev->sd, 0xC24C + ssc_offset,
+					    mod_new[i].pllcfg4);
+			if (err < 0)
+				break;
+
+			err = irs1125_write(&dev->sd, 0xC24D + ssc_offset,
+					    mod_new[i].pllcfg5);
+			if (err < 0)
+				break;
+
+			err = irs1125_write(&dev->sd, 0xC24E + ssc_offset,
+					    mod_new[i].pllcfg6);
+			if (err < 0)
+				break;
+
+			err = irs1125_write(&dev->sd, 0xC24F + ssc_offset,
+					    mod_new[i].pllcfg7);
+			if (err < 0)
+				break;
+
+			err = irs1125_write(&dev->sd, 0xC250 + ssc_offset,
+					    mod_new[i].pllcfg8);
+			if (err < 0)
+				break;
 		}
 		break;
 	}
-	case IRS1125_CID_MOD_PLL:
-		mod_new = (struct irs1125_mod_pll *)ctrl->p_new.p;
-		mod_cur = (struct irs1125_mod_pll *)ctrl->p_cur.p;
-		for (i = 0; i < IRS1125_NUM_MOD_PLLS; i++) {
-			if (mod_cur[i].pllcfg1 != mod_new[i].pllcfg1) {
-				addr = 0xC3A0 + i * 3;
-				val = mod_new[i].pllcfg1;
-				err = irs1125_write(&dev->sd, addr, val);
-				if (err < 0)
-					break;
-			}
-			if (mod_cur[i].pllcfg2 != mod_new[i].pllcfg2) {
-				addr = 0xC3A1 + i * 3;
-				val = mod_new[i].pllcfg2;
-				err = irs1125_write(&dev->sd, addr, val);
-				if (err < 0)
-					break;
-			}
-			if (mod_cur[i].pllcfg3 != mod_new[i].pllcfg3) {
-				addr = 0xC3A2 + i * 3;
-				val = mod_new[i].pllcfg3;
-				err = irs1125_write(&dev->sd, addr, val);
-				if (err < 0)
-					break;
-			}
-			if (mod_cur[i].pllcfg4 != mod_new[i].pllcfg4) {
-				addr = 0xC24C + i * 5;
-				val = mod_new[i].pllcfg4;
-				err = irs1125_write(&dev->sd, addr, val);
-				if (err < 0)
-					break;
-			}
-			if (mod_cur[i].pllcfg5 != mod_new[i].pllcfg5) {
-				addr = 0xC24D + i * 5;
-				val = mod_new[i].pllcfg5;
-				err = irs1125_write(&dev->sd, addr, val);
-				if (err < 0)
-					break;
-			}
-			if (mod_cur[i].pllcfg6 != mod_new[i].pllcfg6) {
-				addr = 0xC24E + i * 5;
-				val = mod_new[i].pllcfg6;
-				err = irs1125_write(&dev->sd, addr, val);
-				if (err < 0)
-					break;
-			}
-			if (mod_cur[i].pllcfg7 != mod_new[i].pllcfg7) {
-				addr = 0xC24F + i * 5;
-				val = mod_new[i].pllcfg7;
-				err = irs1125_write(&dev->sd, addr, val);
-				if (err < 0)
-					break;
-			}
-			if (mod_cur[i].pllcfg8 != mod_new[i].pllcfg8) {
-				addr = 0xC250 + i * 5;
-				val = mod_new[i].pllcfg8;
-				err = irs1125_write(&dev->sd, addr, val);
-				if (err < 0)
-					break;
-			}
-		}
-		break;
-	case IRS1125_CID_SEQ_CONFIG:
+	case IRS1125_CID_SEQ_CONFIG: {
+		struct irs1125_seq_cfg *cfg_new;
+
 		cfg_new = (struct irs1125_seq_cfg *)ctrl->p_new.p;
-		cfg_cur = (struct irs1125_seq_cfg *)ctrl->p_cur.p;
 		for (i = 0; i < IRS1125_NUM_SEQ_ENTRIES; i++) {
-			if (cfg_cur[i].exposure != cfg_new[i].exposure)	{
-				addr = IRS1125_REG_DMEM_SHADOW + i * 4;
-				val = cfg_new[i].exposure;
-				err = irs1125_write(&dev->sd, addr, val);
-				if (err < 0)
-					break;
-			}
-			if (cfg_cur[i].framerate != cfg_new[i].framerate) {
-				addr = IRS1125_REG_DMEM_SHADOW + 1 + i * 4;
-				val = cfg_new[i].framerate;
-				err = irs1125_write(&dev->sd, addr, val);
-				if (err < 0)
-					break;
-			}
-			if (cfg_cur[i].ps != cfg_new[i].ps) {
-				addr = IRS1125_REG_DMEM_SHADOW + 2 + i * 4;
-				val = cfg_new[i].ps;
-				err = irs1125_write(&dev->sd, addr, val);
-				if (err < 0)
-					break;
-			}
-			if (cfg_cur[i].pll != cfg_new[i].pll) {
-				addr = IRS1125_REG_DMEM_SHADOW + 3 + i * 4;
-				val = cfg_new[i].pll;
-				err = irs1125_write(&dev->sd, addr, val);
-				if (err < 0)
-					break;
-			}
+			unsigned int seq_offset = i * 4;
+			u16 addr, val;
+
+			addr = IRS1125_REG_DMEM_SHADOW + seq_offset;
+			val = cfg_new[i].exposure;
+			err = irs1125_write(&dev->sd, addr, val);
+			if (err < 0)
+				break;
+
+			addr = IRS1125_REG_DMEM_SHADOW + 1 + seq_offset;
+			val = cfg_new[i].framerate;
+			err = irs1125_write(&dev->sd, addr, val);
+			if (err < 0)
+				break;
+
+			addr = IRS1125_REG_DMEM_SHADOW + 2 + seq_offset;
+			val = cfg_new[i].ps;
+			err = irs1125_write(&dev->sd, addr, val);
+			if (err < 0)
+				break;
+
+			addr = IRS1125_REG_DMEM_SHADOW + 3 + seq_offset;
+			val = cfg_new[i].pll;
+			err = irs1125_write(&dev->sd, addr, val);
+			if (err < 0)
+				break;
 		}
 		break;
+	}
 	case IRS1125_CID_NUM_SEQS:
 		err = irs1125_write(&dev->sd, 0xA88D, ctrl->val - 1);
 		if (err >= 0)
@@ -748,19 +820,6 @@ static const struct v4l2_ctrl_config irs1125_custom_ctrls[] = {
 		.elem_size = sizeof(u16),
 		.dims = {sizeof(struct irs1125_mod_pll) / sizeof(u16),
 			IRS1125_NUM_MOD_PLLS}
-	}, {
-		.ops = &irs1125_ctrl_ops,
-		.id = IRS1125_CID_SAFE_RECONFIG,
-		.name = "Change exposure and pause of single seq",
-		.type = V4L2_CTRL_TYPE_U16,
-		.flags = V4L2_CTRL_FLAG_HAS_PAYLOAD,
-		.min = 0,
-		.max = U16_MAX,
-		.step = 1,
-		.def = 0,
-		.elem_size = sizeof(u16),
-		.dims = {sizeof(struct irs1125_illu) / sizeof(u16),
-			IRS1125_NUM_SEQ_ENTRIES}
 	}, {
 		.ops = &irs1125_ctrl_ops,
 		.id = IRS1125_CID_SEQ_CONFIG,
@@ -890,9 +949,16 @@ static int irs1125_ctrls_init(struct irs1125 *sensor, struct device *dev)
 {
 	struct v4l2_ctrl *ctrl;
 	int err, i;
-	struct v4l2_ctrl_handler *hdl;
+	struct v4l2_ctrl_handler *hdl = &sensor->ctrl_handler;
+	struct v4l2_ctrl_config ctrl_cfg = {
+		.ops = &irs1125_ctrl_ops,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = 0,
+		.max = U16_MAX,
+		.step = 1,
+		.def = 0x1000
+	};
 
-	hdl = &sensor->ctrl_handler;
 	v4l2_ctrl_handler_init(hdl, ARRAY_SIZE(irs1125_custom_ctrls));
 
 	for (i = 0; i < ARRAY_SIZE(irs1125_custom_ctrls); i++)	{
@@ -911,6 +977,27 @@ static int irs1125_ctrls_init(struct irs1125 *sensor, struct device *dev)
 		dev_err(dev, "Error %d adding controls\n", hdl->error);
 		err = hdl->error;
 		goto error_ctrls;
+	}
+
+	for (i = 0; i < IRS1125_NUM_SEQ_ENTRIES; i++) {
+		ctrl_cfg.name = expo_ctrl_names[i];
+		ctrl_cfg.id = IRS1125_CID_SAFE_RECONFIG_S0_EXPO + i * 2;
+		ctrl = v4l2_ctrl_new_custom(hdl, &ctrl_cfg,
+					    NULL);
+		if (!ctrl)
+			dev_err(dev, "Failed to init exposure control %s\n",
+				ctrl_cfg.name);
+	}
+
+	ctrl_cfg.def = 0;
+	for (i = 0; i < IRS1125_NUM_SEQ_ENTRIES; i++) {
+		ctrl_cfg.name = frame_ctrl_names[i];
+		ctrl_cfg.id = IRS1125_CID_SAFE_RECONFIG_S0_FRAME + i * 2;
+		ctrl = v4l2_ctrl_new_custom(hdl, &ctrl_cfg,
+					    NULL);
+		if (!ctrl)
+			dev_err(dev, "Failed to init framerate control %s\n",
+				ctrl_cfg.name);
 	}
 
 	sensor->sd.ctrl_handler = hdl;
@@ -1030,6 +1117,7 @@ static int irs1125_probe(struct i2c_client *client,
 	}
 
 	gpio_num = desc_to_gpio(sensor->reset);
+	dev_dbg(&client->dev, "reset on GPIO num %d\n", gpio_num);
 
 	mutex_init(&sensor->lock);
 
