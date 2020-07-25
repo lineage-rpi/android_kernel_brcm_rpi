@@ -239,6 +239,14 @@
 	.get = xhandler_get, .put = xhandler_put, \
 	.private_value = SOC_DOUBLE_R_VALUE(reg_left, reg_right, xshift, \
 					    xmax, xinvert) }
+#define SOC_SINGLE_MULTI_EXT(xname, xreg, xshift, xmax, xinvert, xcount,\
+	xhandler_get, xhandler_put) \
+{	.iface = SNDRV_CTL_ELEM_IFACE_MIXER, .name = xname, \
+	.info = snd_soc_info_multi_ext, \
+	.get = xhandler_get, .put = xhandler_put, \
+	.private_value = (unsigned long)&(struct soc_multi_mixer_control) \
+		{.reg = xreg, .shift = xshift, .rshift = xshift, .max = xmax, \
+		.count = xcount, .platform_max = xmax, .invert = xinvert} }
 #define SOC_SINGLE_EXT_TLV(xname, xreg, xshift, xmax, xinvert,\
 	 xhandler_get, xhandler_put, tlv_array) \
 {	.iface = SNDRV_CTL_ELEM_IFACE_MIXER, .name = xname, \
@@ -361,6 +369,10 @@
 
 #define SOC_ENUM_SINGLE_VIRT_DECL(name, xtexts) \
 	const struct soc_enum name = SOC_ENUM_SINGLE_VIRT(ARRAY_SIZE(xtexts), xtexts)
+
+/* DAI Link Host Mode Support */
+#define SND_SOC_DAI_LINK_NO_HOST		0x1
+#define SND_SOC_DAI_LINK_OPT_HOST		0x2
 
 /*
  * Bias levels
@@ -621,6 +633,8 @@ int snd_soc_get_strobe(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol);
 int snd_soc_put_strobe(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol);
+int snd_soc_info_multi_ext(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_info *uinfo);
 
 /**
  * struct snd_soc_jack_pin - Describes a pin to update based on jack detection
@@ -713,6 +727,7 @@ struct snd_soc_pcm_stream {
 	unsigned int channels_min;	/* min channels */
 	unsigned int channels_max;	/* max channels */
 	unsigned int sig_bits;		/* number of bits of content */
+	const char *aif_name;		/* DAPM AIF widget name */
 };
 
 /* SoC audio ops */
@@ -826,6 +841,12 @@ struct snd_soc_dai_link {
 
 	/* This DAI link can route to other DAI links at runtime (Frontend)*/
 	unsigned int dynamic:1;
+
+	/*
+	 * This DAI can support no host IO (no pcm data is
+	 * copied to from host)
+	 */
+	unsigned int no_host_mode:2;
 
 	/* DPCM capture and Playback support */
 	unsigned int dpcm_capture:1;
@@ -1193,6 +1214,11 @@ struct soc_bytes_ext {
 struct soc_mreg_control {
 	long min, max;
 	unsigned int regbase, regcount, nbits, invert;
+};
+
+struct soc_multi_mixer_control {
+	int min, max, platform_max, count;
+	unsigned int reg, rreg, shift, rshift, invert;
 };
 
 /* enumerated kcontrol */

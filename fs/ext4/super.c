@@ -1066,8 +1066,9 @@ static void ext4_put_super(struct super_block *sb)
 		crypto_free_shash(sbi->s_chksum_driver);
 	kfree(sbi->s_blockgroup_lock);
 	fs_put_dax(sbi->s_daxdev);
+	fscrypt_free_dummy_context(&sbi->s_dummy_enc_ctx);
 #ifdef CONFIG_UNICODE
-	utf8_unload(sbi->s_encoding);
+	utf8_unload(sb->s_encoding);
 #endif
 	kfree(sbi);
 }
@@ -1351,18 +1352,39 @@ retry:
 	return res;
 }
 
-static bool ext4_dummy_context(struct inode *inode)
+static const union fscrypt_context *
+ext4_get_dummy_context(struct super_block *sb)
 {
-	return DUMMY_ENCRYPTION_ENABLED(EXT4_SB(inode->i_sb));
+	return EXT4_SB(sb)->s_dummy_enc_ctx.ctx;
+}
+
+static bool ext4_has_stable_inodes(struct super_block *sb)
+{
+	return ext4_has_feature_stable_inodes(sb);
+}
+
+static void ext4_get_ino_and_lblk_bits(struct super_block *sb,
+				       int *ino_bits_ret, int *lblk_bits_ret)
+{
+	*ino_bits_ret = 8 * sizeof(EXT4_SB(sb)->s_es->s_inodes_count);
+	*lblk_bits_ret = 8 * sizeof(ext4_lblk_t);
+}
+
+static bool ext4_inline_crypt_enabled(struct super_block *sb)
+{
+	return test_opt(sb, INLINECRYPT);
 }
 
 static const struct fscrypt_operations ext4_cryptops = {
 	.key_prefix		= "ext4:",
 	.get_context		= ext4_get_context,
 	.set_context		= ext4_set_context,
-	.dummy_context		= ext4_dummy_context,
+	.get_dummy_context	= ext4_get_dummy_context,
 	.empty_dir		= ext4_empty_dir,
 	.max_namelen		= EXT4_NAME_LEN,
+	.has_stable_inodes	= ext4_has_stable_inodes,
+	.get_ino_and_lblk_bits	= ext4_get_ino_and_lblk_bits,
+	.inline_crypt_enabled	= ext4_inline_crypt_enabled,
 };
 #endif
 
@@ -1458,6 +1480,7 @@ enum {
 	Opt_journal_path, Opt_journal_checksum, Opt_journal_async_commit,
 	Opt_abort, Opt_data_journal, Opt_data_ordered, Opt_data_writeback,
 	Opt_data_err_abort, Opt_data_err_ignore, Opt_test_dummy_encryption,
+	Opt_inlinecrypt,
 	Opt_usrjquota, Opt_grpjquota, Opt_offusrjquota, Opt_offgrpjquota,
 	Opt_jqfmt_vfsold, Opt_jqfmt_vfsv0, Opt_jqfmt_vfsv1, Opt_quota,
 	Opt_noquota, Opt_barrier, Opt_nobarrier, Opt_err,
@@ -1553,7 +1576,9 @@ static const match_table_t tokens = {
 	{Opt_init_itable, "init_itable"},
 	{Opt_noinit_itable, "noinit_itable"},
 	{Opt_max_dir_size_kb, "max_dir_size_kb=%u"},
+	{Opt_test_dummy_encryption, "test_dummy_encryption=%s"},
 	{Opt_test_dummy_encryption, "test_dummy_encryption"},
+	{Opt_inlinecrypt, "inlinecrypt"},
 	{Opt_nombcache, "nombcache"},
 	{Opt_nombcache, "no_mbcache"},	/* for backward compatibility */
 	{Opt_removed, "check=none"},	/* mount option from ext2/3 */
@@ -1764,7 +1789,12 @@ static const struct mount_opts {
 	{Opt_jqfmt_vfsv0, QFMT_VFS_V0, MOPT_QFMT},
 	{Opt_jqfmt_vfsv1, QFMT_VFS_V1, MOPT_QFMT},
 	{Opt_max_dir_size_kb, 0, MOPT_GTE0},
-	{Opt_test_dummy_encryption, 0, MOPT_GTE0},
+	{Opt_test_dummy_encryption, 0, MOPT_STRING},
+#ifdef CONFIG_FS_ENCRYPTION_INLINE_CRYPT
+	{Opt_inlinecrypt, EXT4_MOUNT_INLINECRYPT, MOPT_SET},
+#else
+	{Opt_inlinecrypt, EXT4_MOUNT_INLINECRYPT, MOPT_NOSUPPORT},
+#endif
 	{Opt_nombcache, EXT4_MOUNT_NO_MBCACHE, MOPT_SET},
 	{Opt_err, 0, 0}
 };
@@ -1798,6 +1828,48 @@ static int ext4_sb_read_encoding(const struct ext4_super_block *es,
 	return 0;
 }
 #endif
+
+static int ext4_set_test_dummy_encryption(struct super_block *sb,
+					  const char *opt,
+					  const substring_t *arg,
+					  bool is_remount)
+{
+#ifdef CONFIG_FS_ENCRYPTION
+	struct ext4_sb_info *sbi = EXT4_SB(sb);
+	int err;
+
+	/*
+	 * This mount option is just for testing, and it's not worthwhile to
+	 * implement the extra complexity (e.g. RCU protection) that would be
+	 * needed to allow it to be set or changed during remount.  We do allow
+	 * it to be specified during remount, but only if there is no change.
+	 */
+	if (is_remount && !sbi->s_dummy_enc_ctx.ctx) {
+		ext4_msg(sb, KERN_WARNING,
+			 "Can't set test_dummy_encryption on remount");
+		return -1;
+	}
+	err = fscrypt_set_test_dummy_encryption(sb, arg, &sbi->s_dummy_enc_ctx);
+	if (err) {
+		if (err == -EEXIST)
+			ext4_msg(sb, KERN_WARNING,
+				 "Can't change test_dummy_encryption on remount");
+		else if (err == -EINVAL)
+			ext4_msg(sb, KERN_WARNING,
+				 "Value of option \"%s\" is unrecognized", opt);
+		else
+			ext4_msg(sb, KERN_WARNING,
+				 "Error processing option \"%s\" [%d]",
+				 opt, err);
+		return -1;
+	}
+	ext4_msg(sb, KERN_WARNING, "Test dummy encryption mode enabled");
+#else
+	ext4_msg(sb, KERN_WARNING,
+		 "Test dummy encryption mount option ignored");
+#endif
+	return 1;
+}
 
 static int handle_mount_opt(struct super_block *sb, char *opt, int token,
 			    substring_t *args, unsigned long *journal_devnum,
@@ -1995,14 +2067,8 @@ static int handle_mount_opt(struct super_block *sb, char *opt, int token,
 		*journal_ioprio =
 			IOPRIO_PRIO_VALUE(IOPRIO_CLASS_BE, arg);
 	} else if (token == Opt_test_dummy_encryption) {
-#ifdef CONFIG_FS_ENCRYPTION
-		sbi->s_mount_flags |= EXT4_MF_TEST_DUMMY_ENCRYPTION;
-		ext4_msg(sb, KERN_WARNING,
-			 "Test dummy encryption mode enabled");
-#else
-		ext4_msg(sb, KERN_WARNING,
-			 "Test dummy encryption mount option ignored");
-#endif
+		return ext4_set_test_dummy_encryption(sb, opt, &args[0],
+						      is_remount);
 	} else if (m->flags & MOPT_DATAJ) {
 		if (is_remount) {
 			if (!sbi->s_journal)
@@ -2271,8 +2337,8 @@ static int _ext4_show_options(struct seq_file *seq, struct super_block *sb,
 		SEQ_OPTS_PRINT("max_dir_size_kb=%u", sbi->s_max_dir_size_kb);
 	if (test_opt(sb, DATA_ERR_ABORT))
 		SEQ_OPTS_PUTS("data_err=abort");
-	if (DUMMY_ENCRYPTION_ENABLED(sbi))
-		SEQ_OPTS_PUTS("test_dummy_encryption");
+
+	fscrypt_show_test_dummy_encryption(seq, sep, sb);
 
 	ext4_show_quota_options(seq, sb);
 	return 0;
@@ -3890,16 +3956,10 @@ static int ext4_fill_super(struct super_block *sb, void *data, int silent)
 		goto failed_mount;
 
 #ifdef CONFIG_UNICODE
-	if (ext4_has_feature_casefold(sb) && !sbi->s_encoding) {
+	if (ext4_has_feature_casefold(sb) && !sb->s_encoding) {
 		const struct ext4_sb_encodings *encoding_info;
 		struct unicode_map *encoding;
 		__u16 encoding_flags;
-
-		if (ext4_has_feature_encrypt(sb)) {
-			ext4_msg(sb, KERN_ERR,
-				 "Can't mount with encoding and encryption");
-			goto failed_mount;
-		}
 
 		if (ext4_sb_read_encoding(es, &encoding_info,
 					  &encoding_flags)) {
@@ -3921,8 +3981,8 @@ static int ext4_fill_super(struct super_block *sb, void *data, int silent)
 			 "%s-%s with flags 0x%hx", encoding_info->name,
 			 encoding_info->version?:"\b", encoding_flags);
 
-		sbi->s_encoding = encoding;
-		sbi->s_encoding_flags = encoding_flags;
+		sb->s_encoding = encoding;
+		sb->s_encoding_flags = encoding_flags;
 	}
 #endif
 
@@ -4542,11 +4602,6 @@ no_journal:
 		goto failed_mount4;
 	}
 
-#ifdef CONFIG_UNICODE
-	if (sbi->s_encoding)
-		sb->s_d_op = &ext4_dentry_ops;
-#endif
-
 	sb->s_root = d_make_root(root);
 	if (!sb->s_root) {
 		ext4_msg(sb, KERN_ERR, "get root dentry failed");
@@ -4738,13 +4793,14 @@ failed_mount:
 		crypto_free_shash(sbi->s_chksum_driver);
 
 #ifdef CONFIG_UNICODE
-	utf8_unload(sbi->s_encoding);
+	utf8_unload(sb->s_encoding);
 #endif
 
 #ifdef CONFIG_QUOTA
 	for (i = 0; i < EXT4_MAXQUOTAS; i++)
 		kfree(get_qf_name(sb, sbi, i));
 #endif
+	fscrypt_free_dummy_context(&sbi->s_dummy_enc_ctx);
 	ext4_blkdev_remove(sbi);
 	brelse(bh);
 out_fail:

@@ -94,6 +94,7 @@
 #include <linux/sched/debug.h>
 #include <linux/sched/stat.h>
 #include <linux/posix-timers.h>
+#include <linux/cpufreq_times.h>
 #include <trace/events/oom.h>
 #include "internal.h"
 #include "fd.h"
@@ -3091,6 +3092,9 @@ static const struct pid_entry tgid_base_stuff[] = {
 #ifdef CONFIG_LIVEPATCH
 	ONE("patch_state",  S_IRUSR, proc_pid_patch_state),
 #endif
+#ifdef CONFIG_CPU_FREQ_TIMES
+	ONE("time_in_state", 0444, proc_time_in_state_show),
+#endif
 #ifdef CONFIG_STACKLEAK_METRICS
 	ONE("stack_depth", S_IRUGO, proc_stack_depth),
 #endif
@@ -3486,6 +3490,9 @@ static const struct pid_entry tid_base_stuff[] = {
 #endif
 #ifdef CONFIG_PROC_PID_ARCH_STATUS
 	ONE("arch_status", S_IRUGO, proc_pid_arch_status),
+#endif
+#ifdef CONFIG_CPU_FREQ_TIMES
+	ONE("time_in_state", 0444, proc_time_in_state_show),
 #endif
 };
 

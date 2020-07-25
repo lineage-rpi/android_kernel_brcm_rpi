@@ -648,6 +648,9 @@ static int mmc_decode_ext_csd(struct mmc_card *card, u8 *ext_csd)
 				 mmc_hostname(card->host),
 				 card->ext_csd.cmdq_depth);
 		}
+		card->ext_csd.enhanced_rpmb_supported =
+					(card->ext_csd.rel_param &
+					 EXT_CSD_WR_REL_PARAM_EN_RPMB_REL_WR);
 	}
 out:
 	return err;
@@ -787,6 +790,8 @@ MMC_DEV_ATTR(enhanced_area_offset, "%llu\n",
 		card->ext_csd.enhanced_area_offset);
 MMC_DEV_ATTR(enhanced_area_size, "%u\n", card->ext_csd.enhanced_area_size);
 MMC_DEV_ATTR(raw_rpmb_size_mult, "%#x\n", card->ext_csd.raw_rpmb_size_mult);
+MMC_DEV_ATTR(enhanced_rpmb_supported, "%#x\n",
+	card->ext_csd.enhanced_rpmb_supported);
 MMC_DEV_ATTR(rel_sectors, "%#x\n", card->ext_csd.rel_sectors);
 MMC_DEV_ATTR(ocr, "0x%08x\n", card->ocr);
 MMC_DEV_ATTR(rca, "0x%04x\n", card->rca);
@@ -844,6 +849,7 @@ static struct attribute *mmc_std_attrs[] = {
 	&dev_attr_enhanced_area_offset.attr,
 	&dev_attr_enhanced_area_size.attr,
 	&dev_attr_raw_rpmb_size_mult.attr,
+	&dev_attr_enhanced_rpmb_supported.attr,
 	&dev_attr_rel_sectors.attr,
 	&dev_attr_ocr.attr,
 	&dev_attr_rca.attr,
@@ -1852,15 +1858,19 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 	 */
 	card->reenable_cmdq = card->ext_csd.cmdq_en;
 
-	if (card->ext_csd.cmdq_en && !host->cqe_enabled) {
+	if (host->cqe_ops && !host->cqe_enabled) {
 		err = host->cqe_ops->cqe_enable(host, card);
-		if (err) {
-			pr_err("%s: Failed to enable CQE, error %d\n",
-				mmc_hostname(host), err);
-		} else {
+		if (!err) {
 			host->cqe_enabled = true;
-			pr_info("%s: Command Queue Engine enabled\n",
-				mmc_hostname(host));
+
+			if (card->ext_csd.cmdq_en) {
+				pr_info("%s: Command Queue Engine enabled\n",
+					mmc_hostname(host));
+			} else {
+				host->hsq_enabled = true;
+				pr_info("%s: Host Software Queue enabled\n",
+					mmc_hostname(host));
+			}
 		}
 	}
 

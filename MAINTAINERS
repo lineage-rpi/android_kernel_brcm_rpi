@@ -11548,6 +11548,12 @@ S:	Maintained
 F:	Documentation/scsi/NinjaSCSI.txt
 F:	drivers/scsi/nsp32*
 
+NINTENDO HID DRIVER
+M:	Daniel J. Ogorchock <djogorchock@gmail.com>
+L:	linux-input@vger.kernel.org
+S:	Maintained
+F:	drivers/hid/hid-nintendo*
+
 NIOS2 ARCHITECTURE
 M:	Ley Foon Tan <lftan@altera.com>
 L:	nios2-dev@lists.rocketboards.org (moderated for non-subscribers)
@@ -15603,6 +15609,15 @@ L:	netdev@vger.kernel.org
 W:	http://www.stlinux.com
 S:	Supported
 F:	drivers/net/ethernet/stmicro/stmmac/
+
+EXTRA BOOT CONFIG
+M:	Masami Hiramatsu <mhiramat@kernel.org>
+S:	Maintained
+F:	lib/bootconfig.c
+F:	fs/proc/bootconfig.c
+F:	include/linux/bootconfig.h
+F:	tools/bootconfig/*
+F:	Documentation/admin-guide/bootconfig.rst
 
 SUN3/3X
 M:	Sam Creasey <sammy@sammy.net>
