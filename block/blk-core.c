@@ -121,6 +121,7 @@ void blk_rq_init(struct request_queue *q, struct request *rq)
 	rq->start_time_ns = ktime_get_ns();
 	rq->part = NULL;
 	refcount_set(&rq->ref, 1);
+	blk_crypto_rq_set_defaults(rq);
 }
 EXPORT_SYMBOL(blk_rq_init);
 
@@ -618,6 +619,8 @@ bool bio_attempt_back_merge(struct request *req, struct bio *bio,
 	req->biotail = bio;
 	req->__data_len += bio->bi_iter.bi_size;
 
+	bio_crypt_free_ctx(bio);
+
 	blk_account_io_start(req, false);
 	return true;
 }
@@ -641,6 +644,8 @@ bool bio_attempt_front_merge(struct request *req, struct bio *bio,
 
 	req->__sector = bio->bi_iter.bi_sector;
 	req->__data_len += bio->bi_iter.bi_size;
+
+	bio_crypt_do_front_merge(req, bio);
 
 	blk_account_io_start(req, false);
 	return true;
@@ -1064,8 +1069,7 @@ blk_qc_t generic_make_request(struct bio *bio)
 			/* Create a fresh bio_list for all subordinate requests */
 			bio_list_on_stack[1] = bio_list_on_stack[0];
 			bio_list_init(&bio_list_on_stack[0]);
-
-			if (!blk_crypto_submit_bio(&bio))
+			if (blk_crypto_bio_prep(&bio))
 				ret = q->make_request_fn(q, bio);
 
 			blk_queue_exit(q);
@@ -1128,7 +1132,7 @@ blk_qc_t direct_make_request(struct bio *bio)
 		return BLK_QC_T_NONE;
 	}
 
-	if (!blk_crypto_submit_bio(&bio))
+	if (blk_crypto_bio_prep(&bio))
 		ret = q->make_request_fn(q, bio);
 	blk_queue_exit(q);
 	return ret;
@@ -1257,6 +1261,9 @@ blk_status_t blk_insert_cloned_request(struct request_queue *q, struct request *
 
 	if (rq->rq_disk &&
 	    should_fail_request(&rq->rq_disk->part0, blk_rq_bytes(rq)))
+		return BLK_STS_IOERR;
+
+	if (blk_crypto_insert_cloned_request(rq))
 		return BLK_STS_IOERR;
 
 	if (blk_queue_io_stat(q))
@@ -1646,6 +1653,9 @@ int blk_rq_prep_clone(struct request *rq, struct request *rq_src,
 
 	__blk_rq_prep_clone(rq, rq_src);
 
+	if (rq->bio)
+		blk_crypto_rq_bio_prep(rq, rq->bio, gfp_mask);
+
 	return 0;
 
 free_and_out:
@@ -1812,12 +1822,6 @@ int __init blk_dev_init(void)
 #ifdef CONFIG_DEBUG_FS
 	blk_debugfs_root = debugfs_create_dir("block", NULL);
 #endif
-
-	if (bio_crypt_ctx_init() < 0)
-		panic("Failed to allocate mem for bio crypt ctxs\n");
-
-	if (blk_crypto_fallback_init() < 0)
-		panic("Failed to init blk-crypto-fallback\n");
 
 	return 0;
 }
