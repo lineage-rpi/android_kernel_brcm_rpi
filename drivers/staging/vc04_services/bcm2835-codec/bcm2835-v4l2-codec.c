@@ -2268,6 +2268,7 @@ static int bcm2835_codec_start_streaming(struct vb2_queue *q,
 	struct bcm2835_codec_ctx *ctx = vb2_get_drv_priv(q);
 	struct bcm2835_codec_dev *dev = ctx->dev;
 	struct bcm2835_codec_q_data *q_data = get_q_data(ctx, q->type);
+	struct vchiq_mmal_port *port = get_port_data(ctx, q->type);
 	int ret;
 
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "%s: type: %d count %d\n",
@@ -2283,6 +2284,20 @@ static int bcm2835_codec_start_streaming(struct vb2_queue *q,
 		ctx->component_enabled = true;
 	}
 
+	if (count < port->minimum_buffer.num)
+		count = port->minimum_buffer.num;
+
+	if (port->current_buffer.num != count + 1) {
+		v4l2_dbg(2, debug, &ctx->dev->v4l2_dev, "%s: ctx:%p, buffer count changed %u to %u\n",
+			 __func__, ctx, port->current_buffer.num, count + 1);
+
+		port->current_buffer.num = count + 1;
+		ret = vchiq_mmal_port_set_format(dev->instance, port);
+		if (ret)
+			v4l2_err(&ctx->dev->v4l2_dev, "%s: Error updating buffer count, ret %d\n",
+				 __func__, ret);
+	}
+
 	if (q->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
 		/*
 		 * Create the EOS buffer.
@@ -2294,17 +2309,17 @@ static int bcm2835_codec_start_streaming(struct vb2_queue *q,
 				      &q_data->eos_buffer.mmal);
 		q_data->eos_buffer_in_use = false;
 
-		ctx->component->input[0].cb_ctx = ctx;
+		port->cb_ctx = ctx;
 		ret = vchiq_mmal_port_enable(dev->instance,
-					     &ctx->component->input[0],
+					     port,
 					     ip_buffer_cb);
 		if (ret)
 			v4l2_err(&ctx->dev->v4l2_dev, "%s: Failed enabling i/p port, ret %d\n",
 				 __func__, ret);
 	} else {
-		ctx->component->output[0].cb_ctx = ctx;
+		port->cb_ctx = ctx;
 		ret = vchiq_mmal_port_enable(dev->instance,
-					     &ctx->component->output[0],
+					     port,
 					     op_buffer_cb);
 		if (ret)
 			v4l2_err(&ctx->dev->v4l2_dev, "%s: Failed enabling o/p port, ret %d\n",
@@ -2320,10 +2335,7 @@ static void bcm2835_codec_stop_streaming(struct vb2_queue *q)
 	struct bcm2835_codec_q_data *q_data = get_q_data(ctx, q->type);
 	struct vchiq_mmal_port *port = get_port_data(ctx, q->type);
 	struct vb2_v4l2_buffer *vbuf;
-	struct vb2_v4l2_buffer *vb2;
-	struct v4l2_m2m_buffer *m2m;
-	struct m2m_mmal_buffer *buf;
-	int ret, i;
+	int ret;
 
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "%s: type: %d - return buffers\n",
 		 __func__, q->type);
@@ -2363,27 +2375,17 @@ static void bcm2835_codec_stop_streaming(struct vb2_queue *q)
 		}
 	}
 
-	/*
-	 * Release the VCSM handle here as otherwise REQBUFS(0) aborts because
-	 * someone is using the dmabuf before giving the driver a chance to do
-	 * anything about it.
-	 */
-	for (i = 0; i < q->num_buffers; i++) {
-		vb2 = to_vb2_v4l2_buffer(q->bufs[i]);
-		m2m = container_of(vb2, struct v4l2_m2m_buffer, vb);
-		buf = container_of(m2m, struct m2m_mmal_buffer, m2m);
-
-		bcm2835_codec_mmal_buf_cleanup(&buf->mmal);
-	}
 
 	/* If both ports disabled, then disable the component */
-	if (!ctx->component->input[0].enabled &&
+	if (ctx->component_enabled &&
+	    !ctx->component->input[0].enabled &&
 	    !ctx->component->output[0].enabled) {
 		ret = vchiq_mmal_component_disable(dev->instance,
 						   ctx->component);
 		if (ret)
 			v4l2_err(&ctx->dev->v4l2_dev, "%s: Failed enabling component, ret %d\n",
 				 __func__, ret);
+		ctx->component_enabled = false;
 	}
 
 	if (V4L2_TYPE_IS_OUTPUT(q->type))
