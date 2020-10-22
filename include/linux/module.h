@@ -22,6 +22,8 @@
 #include <linux/error-injection.h>
 #include <linux/tracepoint-defs.h>
 #include <linux/srcu.h>
+#include <linux/cfi.h>
+#include <linux/android_kabi.h>
 
 #include <linux/percpu.h>
 #include <asm/module.h>
@@ -365,6 +367,10 @@ struct module {
 	const s32 *crcs;
 	unsigned int num_syms;
 
+#ifdef CONFIG_CFI_CLANG
+	cfi_check_fn cfi_check;
+#endif
+
 	/* Kernel parameters. */
 #ifdef CONFIG_SYSFS
 	struct mutex param_lock;
@@ -389,10 +395,12 @@ struct module {
 	const s32 *unused_gpl_crcs;
 #endif
 
-#ifdef CONFIG_MODULE_SIG
-	/* Signature was verified. */
+	/*
+	 * Signature was verified. Unconditionally compiled in Android to
+	 * preserve ABI compatibility between kernels without module
+	 * signing enabled and signed modules.
+	 */
 	bool sig_ok;
-#endif
 
 	bool async_probe_requested;
 
@@ -507,6 +515,10 @@ struct module {
 	struct error_injection_entry *ei_funcs;
 	unsigned int num_ei_funcs;
 #endif
+	ANDROID_KABI_RESERVE(1);
+	ANDROID_KABI_RESERVE(2);
+	ANDROID_KABI_RESERVE(3);
+	ANDROID_KABI_RESERVE(4);
 } ____cacheline_aligned __randomize_layout;
 #ifndef MODULE_ARCH_INIT
 #define MODULE_ARCH_INIT {}

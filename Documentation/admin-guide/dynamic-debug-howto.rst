@@ -13,6 +13,11 @@ kernel code to obtain additional kernel information.  Currently, if
 ``print_hex_dump_debug()``/``print_hex_dump_bytes()`` calls can be dynamically
 enabled per-callsite.
 
+If you do not want to enable dynamic debug globally (i.e. in some embedded
+system), you may set ``CONFIG_DYNAMIC_DEBUG_CORE`` as basic support of dynamic
+debug and add ``ccflags := -DDYNAMIC_DEBUG_MODULE`` into the Makefile of any
+modules which you'd like to dynamically debug later.
+
 If ``CONFIG_DYNAMIC_DEBUG`` is not set, ``print_hex_dump_debug()`` is just
 shortcut for ``print_hex_dump(KERN_DEBUG)``.
 
@@ -53,6 +58,9 @@ If you make a mistake with the syntax, the write will fail thus::
   nullarbor:~ # echo 'file svcsock.c wtf 1 +p' >
 				<debugfs>/dynamic_debug/control
   -bash: echo: write error: Invalid argument
+
+Note, for systems without 'debugfs' enabled, the control file can be
+found in ``/proc/dynamic_debug/control``.
 
 Viewing Dynamic Debug Behaviour
 ===============================

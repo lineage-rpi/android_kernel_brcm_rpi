@@ -26,6 +26,9 @@
 #include <linux/init.h>
 #include <linux/stddef.h>
 #include <linux/string.h>
+#include <linux/android_vendor.h>
+
+#include <vdso/processor.h>
 
 #include <asm/alternative.h>
 #include <asm/cpufeature.h>
@@ -136,6 +139,8 @@ struct thread_struct {
 		struct user_fpsimd_state fpsimd_state;
 	} uw;
 
+	ANDROID_VENDOR_DATA(1);
+
 	unsigned int		fpsimd_cpu;
 	void			*sve_state;	/* SVE registers, if any */
 	unsigned int		sve_vl;		/* SVE vector length */
@@ -241,11 +246,6 @@ struct task_struct;
 extern void release_thread(struct task_struct *);
 
 unsigned long get_wchan(struct task_struct *p);
-
-static inline void cpu_relax(void)
-{
-	asm volatile("yield" ::: "memory");
-}
 
 /* Thread switching */
 extern struct task_struct *cpu_switch_to(struct task_struct *prev,

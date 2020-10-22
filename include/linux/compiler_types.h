@@ -104,7 +104,7 @@ struct ftrace_likely_data {
 	unsigned long			constant;
 };
 
-#ifdef CONFIG_ENABLE_MUST_CHECK
+#if defined(CONFIG_ENABLE_MUST_CHECK) && !defined(__GENKSYMS__)
 #define __must_check		__attribute__((__warn_unused_result__))
 #else
 #define __must_check
@@ -200,6 +200,18 @@ struct ftrace_likely_data {
 #ifndef randomized_struct_fields_start
 # define randomized_struct_fields_start
 # define randomized_struct_fields_end
+#endif
+
+#ifndef __noscs
+# define __noscs
+#endif
+
+#ifndef __norecordmcount
+# define __norecordmcount
+#endif
+
+#ifndef __nocfi
+# define __nocfi
 #endif
 
 #ifndef asm_volatile_goto
