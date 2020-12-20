@@ -1,6 +1,6 @@
 #
 # Automatically generated file; DO NOT EDIT.
-# Linux/arm 4.19.134 Kernel Configuration
+# Linux/arm 4.19.163 Kernel Configuration
 #
 
 #
@@ -2155,6 +2155,7 @@ CONFIG_SPI_SPIDEV=y
 CONFIG_SPI_SLAVE=y
 # CONFIG_SPI_SLAVE_TIME is not set
 # CONFIG_SPI_SLAVE_SYSTEM_CONTROL is not set
+CONFIG_SPI_DYNAMIC=y
 # CONFIG_SPMI is not set
 # CONFIG_HSI is not set
 # CONFIG_PPS is not set
