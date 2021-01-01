@@ -1,6 +1,6 @@
 #
 # Automatically generated file; DO NOT EDIT.
-# Linux/arm 5.4.83 Kernel Configuration
+# Linux/arm 5.4.86 Kernel Configuration
 #
 CONFIG_CC_VERSION_TEXT="real-arm-linux-androideabi-gcc (GCC) 4.9.x 20150123 (prerelease)"
 CONFIG_CC_IS_GCC=y
@@ -828,7 +828,6 @@ CONFIG_ZPOOL=y
 # CONFIG_ZBUD is not set
 # CONFIG_Z3FOLD is not set
 CONFIG_ZSMALLOC=y
-# CONFIG_PGTABLE_MAPPING is not set
 # CONFIG_ZSMALLOC_STAT is not set
 CONFIG_GENERIC_EARLY_IOREMAP=y
 # CONFIG_IDLE_PAGE_TRACKING is not set
