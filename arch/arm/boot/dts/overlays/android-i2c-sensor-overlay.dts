@@ -38,10 +38,40 @@
         };
     };
 
+    fragment@2 {
+        target = <&i2c_arm>;
+        __dormant__ {
+            #address-cells = <1>;
+            #size-cells = <0>;
+            status = "okay";
+
+            lsm303dlhca: lsm303dlhca@19 {
+                compatible = "st,lsm303dlhc-accel";
+                reg = <0x19>;
+            };
+        };
+    };
+
+    fragment@3 {
+        target = <&i2c_arm>;
+        __dormant__ {
+            #address-cells = <1>;
+            #size-cells = <0>;
+            status = "okay";
+
+            lsm303dlhcm: lsm303dlhcm@1e {
+                compatible = "st,lsm303dlhc-magn";
+                reg = <0x1e>;
+            };
+        };
+    };
+
     __overrides__ {
-        addr = <&lsm6ds3>,"reg:0", <&mpu6050>,"reg:0";
+        addr = <&lsm6ds3>,"reg:0", <&mpu6050>,"reg:0", <&lsm303dlhca>,"reg:0", <&lsm303dlhcm>,"reg:0";
         interrupt = <&lsm6ds3>,"interrupts:0", <&mpu6050>,"interrupts:0";
         lsm6ds3 = <0>,"+0";
         mpu6050 = <0>,"+1";
+        lsm303dlhca = <0>,"+2";
+        lsm303dlhcm = <0>,"+3";
     };
 };
