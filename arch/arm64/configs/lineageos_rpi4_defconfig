@@ -5373,7 +5373,9 @@ CONFIG_IIO_ST_MAGN_SPI_3AXIS=y
 # Pressure sensors
 #
 # CONFIG_ABP060MG is not set
-# CONFIG_BMP280 is not set
+CONFIG_BMP280=y
+CONFIG_BMP280_I2C=y
+CONFIG_BMP280_SPI=y
 # CONFIG_DPS310 is not set
 # CONFIG_HP03 is not set
 # CONFIG_MPL115_I2C is not set
