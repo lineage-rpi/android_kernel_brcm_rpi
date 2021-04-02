@@ -1,6 +1,6 @@
 #
 # Automatically generated file; DO NOT EDIT.
-# Linux/arm 5.4.102 Kernel Configuration
+# Linux/arm 5.4.109 Kernel Configuration
 #
 CONFIG_CC_VERSION_TEXT="real-arm-linux-androideabi-gcc (GCC) 4.9.x 20150123 (prerelease)"
 CONFIG_CC_IS_GCC=y
@@ -4719,6 +4719,7 @@ CONFIG_AUXDISPLAY=y
 # CONFIG_CHARLCD_BL_ON is not set
 CONFIG_CHARLCD_BL_FLASH=y
 # CONFIG_UIO is not set
+# CONFIG_VFIO is not set
 # CONFIG_VIRT_DRIVERS is not set
 CONFIG_VIRTIO_MENU=y
 # CONFIG_VIRTIO_PCI is not set
