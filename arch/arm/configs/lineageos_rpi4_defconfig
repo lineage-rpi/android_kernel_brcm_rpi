@@ -1,6 +1,6 @@
 #
 # Automatically generated file; DO NOT EDIT.
-# Linux/arm 5.4.125 Kernel Configuration
+# Linux/arm 5.4.132 Kernel Configuration
 #
 CONFIG_CC_VERSION_TEXT="real-arm-linux-androideabi-gcc (GCC) 4.9.x 20150123 (prerelease)"
 CONFIG_CC_IS_GCC=y
@@ -1540,6 +1540,7 @@ CONFIG_BLK_DEV_RAM_SIZE=8192
 #
 # CONFIG_BLK_DEV_NVME is not set
 # CONFIG_NVME_FC is not set
+# CONFIG_NVME_TCP is not set
 # CONFIG_NVME_TARGET is not set
 # end of NVME Support
 
