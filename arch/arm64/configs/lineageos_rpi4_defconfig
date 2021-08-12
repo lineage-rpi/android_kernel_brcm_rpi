@@ -1,6 +1,6 @@
 #
 # Automatically generated file; DO NOT EDIT.
-# Linux/arm64 5.4.132 Kernel Configuration
+# Linux/arm64 5.4.140 Kernel Configuration
 #
 CONFIG_CC_VERSION_TEXT="real-aarch64-linux-android-gcc (GCC) 4.9.x 20150123 (prerelease)"
 CONFIG_CC_IS_GCC=y
@@ -2779,6 +2779,7 @@ CONFIG_POWER_SUPPLY_HWMON=y
 # CONFIG_CHARGER_BQ25890 is not set
 # CONFIG_CHARGER_SMB347 is not set
 # CONFIG_BATTERY_GAUGE_LTC2941 is not set
+# CONFIG_BATTERY_RT5033 is not set
 # CONFIG_CHARGER_RT9455 is not set
 # CONFIG_CHARGER_UCS1002 is not set
 CONFIG_HWMON=y
