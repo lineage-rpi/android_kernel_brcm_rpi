@@ -1090,6 +1090,36 @@ static struct notifier_block arm_restart_nb = {
 	.priority = 128,
 };
 
+static void add_androidboot_params(char *cmdline)
+{
+	struct device_node *np;
+	const char *serial;
+
+	char params[100];
+	char btaddr[20];
+	strcpy(params, " androidboot.serialno=10000000abcd1234");
+	strcat(params, " androidboot.btmacaddr=");
+	strcpy(btaddr, "11:22:33:44:55:66");
+	strcat(params, btaddr);
+
+	np = of_find_node_by_path("/");
+	if (np) {
+		if (!of_property_read_string(np, "serial-number",
+					     &serial)) {
+			sprintf(params, " androidboot.serialno=%s", serial);
+			strcat(params, " androidboot.btmacaddr=");
+			strncpy(btaddr+6, serial+8, 2);
+			strncpy(btaddr+9, serial+10, 2);
+			strncpy(btaddr+12, serial+12, 2);
+			strncpy(btaddr+15, serial+14, 2);
+			strcat(params, btaddr);
+		}
+		of_node_put(np);
+	}
+
+	strcat(cmdline, params);
+}
+
 void __init setup_arch(char **cmdline_p)
 {
 	const struct machine_desc *mdesc = NULL;
@@ -1198,6 +1228,9 @@ void __init setup_arch(char **cmdline_p)
 
 	if (mdesc->init_early)
 		mdesc->init_early();
+
+	add_androidboot_params(boot_command_line);
+	strlcpy(cmd_line, boot_command_line, COMMAND_LINE_SIZE);
 }
 
 
