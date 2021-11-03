@@ -131,15 +131,6 @@ ITU-T Rec. H.264 Specification (04/2017 Edition)
 
 :author:    International Telecommunication Union (http://www.itu.ch)
 
-.. _hevc:
-
-ITU H.265/HEVC
-==============
-
-:title:     ITU-T Rec. H.265 | ISO/IEC 23008-2 "High Efficiency Video Coding"
-
-:author:    International Telecommunication Union (http://www.itu.ch), International Organisation for Standardisation (http://www.iso.ch)
-
 .. _jfif:
 
 JFIF
