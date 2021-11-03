@@ -75,11 +75,6 @@ struct v4l2_m2m_queue_ctx {
  * struct v4l2_m2m_ctx - Memory to memory context structure
  *
  * @q_lock: struct &mutex lock
- * @new_frame: valid in the device_run callback: if true, then this
- *		starts a new frame; if false, then this is a new slice
- *		for an existing frame. This is always true unless
- *		V4L2_BUF_CAP_SUPPORTS_M2M_HOLD_CAPTURE_BUF is set, which
- *		indicates slicing support.
  * @m2m_dev: opaque pointer to the internal data to handle M2M context
  * @cap_q_ctx: Capture (output to memory) queue context
  * @out_q_ctx: Output (input from memory) queue context
@@ -95,8 +90,6 @@ struct v4l2_m2m_queue_ctx {
 struct v4l2_m2m_ctx {
 	/* optional cap/out vb2 queues lock */
 	struct mutex			*q_lock;
-
-	bool				new_frame;
 
 	/* internal use only */
 	struct v4l2_m2m_dev		*m2m_dev;
