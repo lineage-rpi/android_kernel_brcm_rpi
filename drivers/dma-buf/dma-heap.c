@@ -157,8 +157,7 @@ static long dma_heap_ioctl(struct file *file, unsigned int ucmd,
 		ret = dma_heap_ioctl_allocate(file, kdata);
 		break;
 	default:
-		ret = -ENOTTY;
-		goto err;
+		return -ENOTTY;
 	}
 
 	if (copy_to_user((void __user *)arg, kdata, out_size) != 0)
