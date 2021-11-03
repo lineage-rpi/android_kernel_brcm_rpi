@@ -313,8 +313,6 @@ static blk_status_t virtio_queue_rq(struct blk_mq_hw_ctx *hctx,
 	bool unmap = false;
 	u32 type;
 
-	BUG_ON(req->nr_phys_segments + 2 > vblk->sg_elems);
-
 	switch (req_op(req)) {
 	case REQ_OP_READ:
 	case REQ_OP_WRITE:
@@ -341,6 +339,10 @@ static blk_status_t virtio_queue_rq(struct blk_mq_hw_ctx *hctx,
 		WARN_ON_ONCE(1);
 		return BLK_STS_IOERR;
 	}
+
+	BUG_ON(type != VIRTIO_BLK_T_DISCARD &&
+	       type != VIRTIO_BLK_T_WRITE_ZEROES &&
+	       (req->nr_phys_segments + 2 > vblk->sg_elems));
 
 	vbr->out_hdr.type = cpu_to_virtio32(vblk->vdev, type);
 	vbr->out_hdr.sector = type ?
@@ -1057,6 +1059,8 @@ static int virtblk_freeze(struct virtio_device *vdev)
 	blk_mq_quiesce_queue(vblk->disk->queue);
 
 	vdev->config->del_vqs(vdev);
+	kfree(vblk->vqs);
+
 	return 0;
 }
 

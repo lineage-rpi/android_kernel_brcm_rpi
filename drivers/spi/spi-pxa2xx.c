@@ -1241,6 +1241,8 @@ static int setup_cs(struct spi_device *spi, struct chip_data *chip,
 		chip->gpio_cs_inverted = spi->mode & SPI_CS_HIGH;
 
 		err = gpiod_direction_output(gpiod, !chip->gpio_cs_inverted);
+		if (err)
+			gpiod_put(chip->gpiod_cs);
 	}
 
 	return err;
@@ -1254,6 +1256,7 @@ static int setup(struct spi_device *spi)
 	struct driver_data *drv_data =
 		spi_controller_get_devdata(spi->controller);
 	uint tx_thres, tx_hi_thres, rx_thres;
+	int err;
 
 	switch (drv_data->ssp_type) {
 	case QUARK_X1000_SSP:
@@ -1400,7 +1403,11 @@ static int setup(struct spi_device *spi)
 	if (drv_data->ssp_type == CE4100_SSP)
 		return 0;
 
-	return setup_cs(spi, chip, chip_info);
+	err = setup_cs(spi, chip, chip_info);
+	if (err)
+		kfree(chip);
+
+	return err;
 }
 
 static void cleanup(struct spi_device *spi)
@@ -1675,9 +1682,9 @@ static int pxa2xx_spi_probe(struct platform_device *pdev)
 	}
 
 	if (platform_info->is_slave)
-		controller = spi_alloc_slave(dev, sizeof(struct driver_data));
+		controller = devm_spi_alloc_slave(dev, sizeof(*drv_data));
 	else
-		controller = spi_alloc_master(dev, sizeof(struct driver_data));
+		controller = devm_spi_alloc_master(dev, sizeof(*drv_data));
 
 	if (!controller) {
 		dev_err(&pdev->dev, "cannot alloc spi_controller\n");
@@ -1900,7 +1907,6 @@ out_error_dma_irq_alloc:
 	free_irq(ssp->irq, drv_data);
 
 out_error_controller_alloc:
-	spi_controller_put(controller);
 	pxa_ssp_free(ssp);
 	return status;
 }

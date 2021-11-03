@@ -238,7 +238,6 @@ config SERIAL_CLPS711X_CONSOLE
 
 config SERIAL_SAMSUNG
 	tristate "Samsung SoC serial support"
-	depends on PLAT_SAMSUNG || ARCH_EXYNOS
 	select SERIAL_CORE
 	help
 	  Support for the on-chip UARTs on the Samsung S3C24XX series CPUs,
@@ -261,15 +260,6 @@ config SERIAL_SAMSUNG_UARTS
 	help
 	  Select the number of available UART ports for the Samsung S3C
 	  serial driver
-	
-config SERIAL_SAMSUNG_DEBUG
-	bool "Samsung SoC serial debug"
-	depends on SERIAL_SAMSUNG && DEBUG_LL
-	help
-	  Add support for debugging the serial driver. Since this is
-	  generally being used as a console, we use our own output
-	  routines that go via the low-level debug printascii()
-	  function.
 
 config SERIAL_SAMSUNG_CONSOLE
 	bool "Support for console on Samsung SoC serial port"
@@ -976,7 +966,7 @@ config SERIAL_QCOM_GENI
 
 config SERIAL_QCOM_GENI_CONSOLE
 	bool "QCOM GENI Serial Console support"
-	depends on SERIAL_QCOM_GENI=y
+	depends on SERIAL_QCOM_GENI
 	select SERIAL_CORE_CONSOLE
 	select SERIAL_EARLYCON
 	help
@@ -1453,7 +1443,6 @@ config SERIAL_MEN_Z135
 
 config SERIAL_SPRD
 	tristate "Support for Spreadtrum serial"
-	depends on ARCH_SPRD
 	select SERIAL_CORE
 	help
 	  This enables the driver for the Spreadtrum's serial.

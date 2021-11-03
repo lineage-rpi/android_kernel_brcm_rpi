@@ -299,10 +299,11 @@ static int amba_remove(struct device *dev)
 {
 	struct amba_device *pcdev = to_amba_device(dev);
 	struct amba_driver *drv = to_amba_driver(dev->driver);
-	int ret;
+	int ret = 0;
 
 	pm_runtime_get_sync(dev);
-	ret = drv->remove(pcdev);
+	if (drv->remove)
+		ret = drv->remove(pcdev);
 	pm_runtime_put_noidle(dev);
 
 	/* Undo the runtime PM settings in amba_probe() */
@@ -319,7 +320,9 @@ static int amba_remove(struct device *dev)
 static void amba_shutdown(struct device *dev)
 {
 	struct amba_driver *drv = to_amba_driver(dev->driver);
-	drv->shutdown(to_amba_device(dev));
+
+	if (drv->shutdown)
+		drv->shutdown(to_amba_device(dev));
 }
 
 /**
@@ -332,12 +335,13 @@ static void amba_shutdown(struct device *dev)
  */
 int amba_driver_register(struct amba_driver *drv)
 {
-	drv->drv.bus = &amba_bustype;
+	if (!drv->probe)
+		return -EINVAL;
 
-#define SETFN(fn)	if (drv->fn) drv->drv.fn = amba_##fn
-	SETFN(probe);
-	SETFN(remove);
-	SETFN(shutdown);
+	drv->drv.bus = &amba_bustype;
+	drv->drv.probe = amba_probe;
+	drv->drv.remove = amba_remove;
+	drv->drv.shutdown = amba_shutdown;
 
 	return driver_register(&drv->drv);
 }
@@ -505,7 +509,7 @@ static DECLARE_DELAYED_WORK(deferred_retry_work, amba_deferred_retry_func);
 
 #define DEFERRED_DEVICE_TIMEOUT (msecs_to_jiffies(5 * 1000))
 
-static void amba_deferred_retry_func(struct work_struct *dummy)
+static int amba_deferred_retry(void)
 {
 	struct deferred_device *ddev, *tmp;
 
@@ -521,11 +525,19 @@ static void amba_deferred_retry_func(struct work_struct *dummy)
 		kfree(ddev);
 	}
 
+	mutex_unlock(&deferred_devices_lock);
+
+	return 0;
+}
+late_initcall(amba_deferred_retry);
+
+static void amba_deferred_retry_func(struct work_struct *dummy)
+{
+	amba_deferred_retry();
+
 	if (!list_empty(&deferred_devices))
 		schedule_delayed_work(&deferred_retry_work,
 				      DEFERRED_DEVICE_TIMEOUT);
-
-	mutex_unlock(&deferred_devices_lock);
 }
 
 /**

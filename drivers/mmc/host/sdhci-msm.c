@@ -12,9 +12,11 @@
 #include <linux/pm_runtime.h>
 #include <linux/slab.h>
 #include <linux/iopoll.h>
+#include <linux/qcom_scm.h>
 #include <linux/regulator/consumer.h>
 
 #include "sdhci-pltfm.h"
+#include "cqhci.h"
 
 #define CORE_MCI_VERSION		0x50
 #define CORE_VERSION_MAJOR_SHIFT	28
@@ -121,6 +123,10 @@
 
 #define msm_host_writel(msm_host, val, host, offset) \
 	msm_host->var_ops->msm_writel_relaxed(val, host, offset)
+
+/* CQHCI vendor specific registers */
+#define CQHCI_VENDOR_CFG1	0xA00
+#define CQHCI_VENDOR_DIS_RST_ON_CQ_EN	(0x3 << 13)
 
 struct sdhci_msm_offset {
 	u32 core_hc_mode;
@@ -232,10 +238,12 @@ struct sdhci_msm_variant_info {
 struct sdhci_msm_host {
 	struct platform_device *pdev;
 	void __iomem *core_mem;	/* MSM SDCC mapped address */
+	void __iomem *ice_mem;	/* MSM ICE mapped address (if available) */
 	int pwr_irq;		/* power irq */
 	struct clk *bus_clk;	/* SDHC bus voter clock */
 	struct clk *xo_clk;	/* TCXO clk needed for FLL feature of cm_dll*/
-	struct clk_bulk_data bulk_clks[4]; /* core, iface, cal, sleep clocks */
+	/* core, iface, cal, sleep, and ice clocks */
+	struct clk_bulk_data bulk_clks[5];
 	unsigned long clk_rate;
 	struct mmc_host *mmc;
 	bool use_14lpp_dll_reset;
@@ -1589,6 +1597,401 @@ out:
 	__sdhci_msm_set_clock(host, clock);
 }
 
+/*****************************************************************************\
+ *                                                                           *
+ * Inline Crypto Engine (ICE) support                                        *
+ *                                                                           *
+\*****************************************************************************/
+
+#ifdef CONFIG_MMC_CRYPTO
+
+#define AES_256_XTS_KEY_SIZE			64
+
+/* QCOM ICE registers */
+
+#define QCOM_ICE_REG_VERSION			0x0008
+
+#define QCOM_ICE_REG_FUSE_SETTING		0x0010
+#define QCOM_ICE_FUSE_SETTING_MASK		0x1
+#define QCOM_ICE_FORCE_HW_KEY0_SETTING_MASK	0x2
+#define QCOM_ICE_FORCE_HW_KEY1_SETTING_MASK	0x4
+
+#define QCOM_ICE_REG_BIST_STATUS		0x0070
+#define QCOM_ICE_BIST_STATUS_MASK		0xF0000000
+
+#define QCOM_ICE_REG_ADVANCED_CONTROL		0x1000
+
+#define sdhci_msm_ice_writel(host, val, reg)	\
+	writel((val), (host)->ice_mem + (reg))
+#define sdhci_msm_ice_readl(host, reg)	\
+	readl((host)->ice_mem + (reg))
+
+static bool sdhci_msm_ice_supported(struct sdhci_msm_host *msm_host)
+{
+	struct device *dev = mmc_dev(msm_host->mmc);
+	u32 regval = sdhci_msm_ice_readl(msm_host, QCOM_ICE_REG_VERSION);
+	int major = regval >> 24;
+	int minor = (regval >> 16) & 0xFF;
+	int step = regval & 0xFFFF;
+
+	/* For now this driver only supports ICE version 3. */
+	if (major != 3) {
+		dev_warn(dev, "Unsupported ICE version: v%d.%d.%d\n",
+			 major, minor, step);
+		return false;
+	}
+
+	dev_info(dev, "Found QC Inline Crypto Engine (ICE) v%d.%d.%d\n",
+		 major, minor, step);
+
+	/* If fuses are blown, ICE might not work in the standard way. */
+	regval = sdhci_msm_ice_readl(msm_host, QCOM_ICE_REG_FUSE_SETTING);
+	if (regval & (QCOM_ICE_FUSE_SETTING_MASK |
+		      QCOM_ICE_FORCE_HW_KEY0_SETTING_MASK |
+		      QCOM_ICE_FORCE_HW_KEY1_SETTING_MASK)) {
+		dev_warn(dev, "Fuses are blown; ICE is unusable!\n");
+		return false;
+	}
+	return true;
+}
+
+static inline struct clk *sdhci_msm_ice_get_clk(struct device *dev)
+{
+	return devm_clk_get(dev, "ice");
+}
+
+static int sdhci_msm_ice_init(struct sdhci_msm_host *msm_host,
+			      struct cqhci_host *cq_host)
+{
+	struct mmc_host *mmc = msm_host->mmc;
+	struct device *dev = mmc_dev(mmc);
+	struct resource *res;
+	int err;
+
+	if (!(cqhci_readl(cq_host, CQHCI_CAP) & CQHCI_CAP_CS))
+		return 0;
+
+	res = platform_get_resource_byname(msm_host->pdev, IORESOURCE_MEM,
+					   "ice");
+	if (!res) {
+		dev_warn(dev, "ICE registers not found\n");
+		goto disable;
+	}
+
+	if (!qcom_scm_ice_available()) {
+		dev_warn(dev, "ICE SCM interface not found\n");
+		goto disable;
+	}
+
+	msm_host->ice_mem = devm_ioremap_resource(dev, res);
+	if (IS_ERR(msm_host->ice_mem)) {
+		err = PTR_ERR(msm_host->ice_mem);
+		dev_err(dev, "Failed to map ICE registers; err=%d\n", err);
+		return err;
+	}
+
+	if (!sdhci_msm_ice_supported(msm_host))
+		goto disable;
+
+	mmc->caps2 |= MMC_CAP2_CRYPTO;
+	return 0;
+
+disable:
+	dev_warn(dev, "Disabling inline encryption support\n");
+	return 0;
+}
+
+static void sdhci_msm_ice_low_power_mode_enable(struct sdhci_msm_host *msm_host)
+{
+	u32 regval;
+
+	regval = sdhci_msm_ice_readl(msm_host, QCOM_ICE_REG_ADVANCED_CONTROL);
+	/*
+	 * Enable low power mode sequence
+	 * [0]-0, [1]-0, [2]-0, [3]-E, [4]-0, [5]-0, [6]-0, [7]-0
+	 */
+	regval |= 0x7000;
+	sdhci_msm_ice_writel(msm_host, regval, QCOM_ICE_REG_ADVANCED_CONTROL);
+}
+
+static void sdhci_msm_ice_optimization_enable(struct sdhci_msm_host *msm_host)
+{
+	u32 regval;
+
+	/* ICE Optimizations Enable Sequence */
+	regval = sdhci_msm_ice_readl(msm_host, QCOM_ICE_REG_ADVANCED_CONTROL);
+	regval |= 0xD807100;
+	/* ICE HPG requires delay before writing */
+	udelay(5);
+	sdhci_msm_ice_writel(msm_host, regval, QCOM_ICE_REG_ADVANCED_CONTROL);
+	udelay(5);
+}
+
+/*
+ * Wait until the ICE BIST (built-in self-test) has completed.
+ *
+ * This may be necessary before ICE can be used.
+ *
+ * Note that we don't really care whether the BIST passed or failed; we really
+ * just want to make sure that it isn't still running.  This is because (a) the
+ * BIST is a FIPS compliance thing that never fails in practice, (b) ICE is
+ * documented to reject crypto requests if the BIST fails, so we needn't do it
+ * in software too, and (c) properly testing storage encryption requires testing
+ * the full storage stack anyway, and not relying on hardware-level self-tests.
+ */
+static int sdhci_msm_ice_wait_bist_status(struct sdhci_msm_host *msm_host)
+{
+	u32 regval;
+	int err;
+
+	err = readl_poll_timeout(msm_host->ice_mem + QCOM_ICE_REG_BIST_STATUS,
+				 regval, !(regval & QCOM_ICE_BIST_STATUS_MASK),
+				 50, 5000);
+	if (err)
+		dev_err(mmc_dev(msm_host->mmc),
+			"Timed out waiting for ICE self-test to complete\n");
+	return err;
+}
+
+static void sdhci_msm_ice_enable(struct sdhci_msm_host *msm_host)
+{
+	if (!(msm_host->mmc->caps2 & MMC_CAP2_CRYPTO))
+		return;
+	sdhci_msm_ice_low_power_mode_enable(msm_host);
+	sdhci_msm_ice_optimization_enable(msm_host);
+	sdhci_msm_ice_wait_bist_status(msm_host);
+}
+
+static int __maybe_unused sdhci_msm_ice_resume(struct sdhci_msm_host *msm_host)
+{
+	if (!(msm_host->mmc->caps2 & MMC_CAP2_CRYPTO))
+		return 0;
+	return sdhci_msm_ice_wait_bist_status(msm_host);
+}
+
+/*
+ * Program a key into a QC ICE keyslot, or evict a keyslot.  QC ICE requires
+ * vendor-specific SCM calls for this; it doesn't support the standard way.
+ */
+static int sdhci_msm_program_key(struct cqhci_host *cq_host,
+				 const union cqhci_crypto_cfg_entry *cfg,
+				 int slot)
+{
+	struct device *dev = mmc_dev(cq_host->mmc);
+	union cqhci_crypto_cap_entry cap;
+	union {
+		u8 bytes[AES_256_XTS_KEY_SIZE];
+		u32 words[AES_256_XTS_KEY_SIZE / sizeof(u32)];
+	} key;
+	int i;
+	int err;
+
+	if (!(cfg->config_enable & CQHCI_CRYPTO_CONFIGURATION_ENABLE))
+		return qcom_scm_ice_invalidate_key(slot);
+
+	/* Only AES-256-XTS has been tested so far. */
+	cap = cq_host->crypto_cap_array[cfg->crypto_cap_idx];
+	if (cap.algorithm_id != CQHCI_CRYPTO_ALG_AES_XTS ||
+	    cap.key_size != CQHCI_CRYPTO_KEY_SIZE_256) {
+		dev_err_ratelimited(dev,
+				    "Unhandled crypto capability; algorithm_id=%d, key_size=%d\n",
+				    cap.algorithm_id, cap.key_size);
+		return -EINVAL;
+	}
+
+	memcpy(key.bytes, cfg->crypto_key, AES_256_XTS_KEY_SIZE);
+
+	/*
+	 * The SCM call byte-swaps the 32-bit words of the key.  So we have to
+	 * do the same, in order for the final key be correct.
+	 */
+	for (i = 0; i < ARRAY_SIZE(key.words); i++)
+		__cpu_to_be32s(&key.words[i]);
+
+	err = qcom_scm_ice_set_key(slot, key.bytes, AES_256_XTS_KEY_SIZE,
+				   QCOM_SCM_ICE_CIPHER_AES_256_XTS,
+				   cfg->data_unit_size);
+	memzero_explicit(&key, sizeof(key));
+	return err;
+}
+#else /* CONFIG_MMC_CRYPTO */
+static inline struct clk *sdhci_msm_ice_get_clk(struct device *dev)
+{
+	return NULL;
+}
+
+static inline int sdhci_msm_ice_init(struct sdhci_msm_host *msm_host,
+				     struct cqhci_host *cq_host)
+{
+	return 0;
+}
+
+static inline void sdhci_msm_ice_enable(struct sdhci_msm_host *msm_host)
+{
+}
+
+static inline int __maybe_unused
+sdhci_msm_ice_resume(struct sdhci_msm_host *msm_host)
+{
+	return 0;
+}
+#endif /* !CONFIG_MMC_CRYPTO */
+
+/*****************************************************************************\
+ *                                                                           *
+ * MSM Command Queue Engine (CQE)                                            *
+ *                                                                           *
+\*****************************************************************************/
+
+static u32 sdhci_msm_cqe_irq(struct sdhci_host *host, u32 intmask)
+{
+	int cmd_error = 0;
+	int data_error = 0;
+
+	if (!sdhci_cqe_irq(host, intmask, &cmd_error, &data_error))
+		return intmask;
+
+	cqhci_irq(host->mmc, intmask, cmd_error, data_error);
+	return 0;
+}
+
+static void sdhci_msm_cqe_enable(struct mmc_host *mmc)
+{
+	struct sdhci_host *host = mmc_priv(mmc);
+	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
+
+	sdhci_cqe_enable(mmc);
+	sdhci_msm_ice_enable(msm_host);
+}
+
+static void sdhci_msm_cqe_disable(struct mmc_host *mmc, bool recovery)
+{
+	struct sdhci_host *host = mmc_priv(mmc);
+	unsigned long flags;
+	u32 ctrl;
+
+	/*
+	 * When CQE is halted, the legacy SDHCI path operates only
+	 * on 16-byte descriptors in 64bit mode.
+	 */
+	if (host->flags & SDHCI_USE_64_BIT_DMA)
+		host->desc_sz = 16;
+
+	spin_lock_irqsave(&host->lock, flags);
+
+	/*
+	 * During CQE command transfers, command complete bit gets latched.
+	 * So s/w should clear command complete interrupt status when CQE is
+	 * either halted or disabled. Otherwise unexpected SDCHI legacy
+	 * interrupt gets triggered when CQE is halted/disabled.
+	 */
+	ctrl = sdhci_readl(host, SDHCI_INT_ENABLE);
+	ctrl |= SDHCI_INT_RESPONSE;
+	sdhci_writel(host,  ctrl, SDHCI_INT_ENABLE);
+	sdhci_writel(host, SDHCI_INT_RESPONSE, SDHCI_INT_STATUS);
+
+	spin_unlock_irqrestore(&host->lock, flags);
+
+	sdhci_cqe_disable(mmc, recovery);
+}
+
+static const struct cqhci_host_ops sdhci_msm_cqhci_ops = {
+	.enable		= sdhci_msm_cqe_enable,
+	.disable	= sdhci_msm_cqe_disable,
+#ifdef CONFIG_MMC_CRYPTO
+	.program_key	= sdhci_msm_program_key,
+#endif
+};
+
+static int sdhci_msm_cqe_add_host(struct sdhci_host *host,
+				struct platform_device *pdev)
+{
+	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
+	struct cqhci_host *cq_host;
+	bool dma64;
+	u32 cqcfg;
+	int ret;
+
+	/*
+	 * When CQE is halted, SDHC operates only on 16byte ADMA descriptors.
+	 * So ensure ADMA table is allocated for 16byte descriptors.
+	 */
+	if (host->caps & SDHCI_CAN_64BIT)
+		host->alloc_desc_sz = 16;
+
+	ret = sdhci_setup_host(host);
+	if (ret)
+		return ret;
+
+	cq_host = cqhci_pltfm_init(pdev);
+	if (IS_ERR(cq_host)) {
+		ret = PTR_ERR(cq_host);
+		dev_err(&pdev->dev, "cqhci-pltfm init: failed: %d\n", ret);
+		goto cleanup;
+	}
+
+	msm_host->mmc->caps2 |= MMC_CAP2_CQE | MMC_CAP2_CQE_DCMD;
+	cq_host->ops = &sdhci_msm_cqhci_ops;
+
+	dma64 = host->flags & SDHCI_USE_64_BIT_DMA;
+
+	ret = sdhci_msm_ice_init(msm_host, cq_host);
+	if (ret)
+		goto cleanup;
+
+	ret = cqhci_init(cq_host, host->mmc, dma64);
+	if (ret) {
+		dev_err(&pdev->dev, "%s: CQE init: failed (%d)\n",
+				mmc_hostname(host->mmc), ret);
+		goto cleanup;
+	}
+
+	/* Disable cqe reset due to cqe enable signal */
+	cqcfg = cqhci_readl(cq_host, CQHCI_VENDOR_CFG1);
+	cqcfg |= CQHCI_VENDOR_DIS_RST_ON_CQ_EN;
+	cqhci_writel(cq_host, cqcfg, CQHCI_VENDOR_CFG1);
+
+	/*
+	 * SDHC expects 12byte ADMA descriptors till CQE is enabled.
+	 * So limit desc_sz to 12 so that the data commands that are sent
+	 * during card initialization (before CQE gets enabled) would
+	 * get executed without any issues.
+	 */
+	if (host->flags & SDHCI_USE_64_BIT_DMA)
+		host->desc_sz = 12;
+
+	ret = __sdhci_add_host(host);
+	if (ret)
+		goto cleanup;
+
+	dev_info(&pdev->dev, "%s: CQE init: success\n",
+			mmc_hostname(host->mmc));
+	return ret;
+
+cleanup:
+	sdhci_cleanup_host(host);
+	return ret;
+}
+
+static void sdhci_msm_set_timeout(struct sdhci_host *host, struct mmc_command *cmd)
+{
+	u32 count, start = 15;
+
+	__sdhci_set_timeout(host, cmd);
+	count = sdhci_readb(host, SDHCI_TIMEOUT_CONTROL);
+	/*
+	 * Update software timeout value if its value is less than hardware data
+	 * timeout value. Qcom SoC hardware data timeout value was calculated
+	 * using 4 * MCLK * 2^(count + 13). where MCLK = 1 / host->clock.
+	 */
+	if (cmd && cmd->data && host->clock > 400000 &&
+	    host->clock <= 50000000 &&
+	    ((1 << (count + start)) > (10 * host->clock)))
+		host->data_timeout = 22LL * NSEC_PER_SEC;
+}
+
 /*
  * Platform specific register write functions. This is so that, if any
  * register write needs to be followed up by platform specific actions,
@@ -1707,6 +2110,13 @@ static void sdhci_msm_set_regulator_caps(struct sdhci_msm_host *msm_host)
 	pr_debug("%s: supported caps: 0x%08x\n", mmc_hostname(mmc), caps);
 }
 
+static void sdhci_msm_reset(struct sdhci_host *host, u8 mask)
+{
+	if ((host->mmc->caps2 & MMC_CAP2_CQE) && (mask & SDHCI_RESET_ALL))
+		cqhci_deactivate(host->mmc);
+	sdhci_reset(host, mask);
+}
+
 static const struct sdhci_msm_variant_ops mci_var_ops = {
 	.msm_readl_relaxed = sdhci_msm_mci_variant_readl_relaxed,
 	.msm_writel_relaxed = sdhci_msm_mci_variant_writel_relaxed,
@@ -1745,7 +2155,7 @@ static const struct of_device_id sdhci_msm_dt_match[] = {
 MODULE_DEVICE_TABLE(of, sdhci_msm_dt_match);
 
 static const struct sdhci_ops sdhci_msm_ops = {
-	.reset = sdhci_reset,
+	.reset = sdhci_msm_reset,
 	.set_clock = sdhci_msm_set_clock,
 	.get_min_clock = sdhci_msm_get_min_clock,
 	.get_max_clock = sdhci_msm_get_max_clock,
@@ -1753,6 +2163,8 @@ static const struct sdhci_ops sdhci_msm_ops = {
 	.set_uhs_signaling = sdhci_msm_set_uhs_signaling,
 	.write_w = sdhci_msm_writew,
 	.write_b = sdhci_msm_writeb,
+	.set_timeout = sdhci_msm_set_timeout,
+	.irq	= sdhci_msm_cqe_irq,
 };
 
 static const struct sdhci_pltfm_data sdhci_msm_pdata = {
@@ -1778,6 +2190,7 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 	u8 core_major;
 	const struct sdhci_msm_offset *msm_offset;
 	const struct sdhci_msm_variant_info *var_info;
+	struct device_node *node = pdev->dev.of_node;
 
 	host = sdhci_pltfm_init(pdev, &sdhci_msm_pdata, sizeof(*msm_host));
 	if (IS_ERR(host))
@@ -1854,6 +2267,11 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 	if (IS_ERR(clk))
 		clk = NULL;
 	msm_host->bulk_clks[3].clk = clk;
+
+	clk = sdhci_msm_ice_get_clk(&pdev->dev);
+	if (IS_ERR(clk))
+		clk = NULL;
+	msm_host->bulk_clks[4].clk = clk;
 
 	ret = clk_bulk_prepare_enable(ARRAY_SIZE(msm_host->bulk_clks),
 				      msm_host->bulk_clks);
@@ -1978,7 +2396,10 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 	pm_runtime_use_autosuspend(&pdev->dev);
 
 	host->mmc_host_ops.execute_tuning = sdhci_msm_execute_tuning;
-	ret = sdhci_add_host(host);
+	if (of_property_read_bool(node, "supports-cqe"))
+		ret = sdhci_msm_cqe_add_host(host, pdev);
+	else
+		ret = sdhci_add_host(host);
 	if (ret)
 		goto pm_runtime_disable;
 	sdhci_msm_set_regulator_caps(msm_host);
@@ -2052,10 +2473,13 @@ static __maybe_unused int sdhci_msm_runtime_resume(struct device *dev)
 	 * Whenever core-clock is gated dynamically, it's needed to
 	 * restore the SDR DLL settings when the clock is ungated.
 	 */
-	if (msm_host->restore_dll_config && msm_host->clk_rate)
-		return sdhci_msm_restore_sdr_dll_config(host);
+	if (msm_host->restore_dll_config && msm_host->clk_rate) {
+		ret = sdhci_msm_restore_sdr_dll_config(host);
+		if (ret)
+			return ret;
+	}
 
-	return 0;
+	return sdhci_msm_ice_resume(msm_host);
 }
 
 static const struct dev_pm_ops sdhci_msm_pm_ops = {

@@ -460,21 +460,15 @@ static int flakey_prepare_ioctl(struct dm_target *ti, struct block_device **bdev
 }
 
 #ifdef CONFIG_BLK_DEV_ZONED
-static int flakey_report_zones(struct dm_target *ti, sector_t sector,
-			       struct blk_zone *zones, unsigned int *nr_zones)
+static int flakey_report_zones(struct dm_target *ti,
+		struct dm_report_zones_args *args, unsigned int nr_zones)
 {
 	struct flakey_c *fc = ti->private;
-	int ret;
+	sector_t sector = flakey_map_sector(ti, args->next_sector);
 
-	/* Do report and remap it */
-	ret = blkdev_report_zones(fc->dev->bdev, flakey_map_sector(ti, sector),
-				  zones, nr_zones);
-	if (ret != 0)
-		return ret;
-
-	if (*nr_zones)
-		dm_remap_zone_report(ti, fc->start, zones, nr_zones);
-	return 0;
+	args->start = fc->start;
+	return blkdev_report_zones(fc->dev->bdev, sector, nr_zones,
+				   dm_report_zones_cb, args);
 }
 #endif
 
@@ -489,8 +483,10 @@ static struct target_type flakey_target = {
 	.name   = "flakey",
 	.version = {1, 5, 0},
 #ifdef CONFIG_BLK_DEV_ZONED
-	.features = DM_TARGET_ZONED_HM,
+	.features = DM_TARGET_ZONED_HM | DM_TARGET_PASSES_CRYPTO,
 	.report_zones = flakey_report_zones,
+#else
+	.features = DM_TARGET_PASSES_CRYPTO,
 #endif
 	.module = THIS_MODULE,
 	.ctr    = flakey_ctr,

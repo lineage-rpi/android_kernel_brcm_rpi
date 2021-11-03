@@ -12,7 +12,9 @@
 #include <net/cfg80211.h>
 #include <net/rtnetlink.h>
 #include <linux/etherdevice.h>
+#include <linux/math64.h>
 #include <linux/module.h>
+#include <net/virt_wifi.h>
 
 static struct wiphy *common_wiphy;
 
@@ -20,6 +22,7 @@ struct virt_wifi_wiphy_priv {
 	struct delayed_work scan_result;
 	struct cfg80211_scan_request *scan_request;
 	bool being_deleted;
+	struct virt_wifi_network_simulation *network_simulation;
 };
 
 static struct ieee80211_channel channel_2ghz = {
@@ -135,6 +138,29 @@ static struct ieee80211_supported_band band_5ghz = {
 /* Assigned at module init. Guaranteed locally-administered and unicast. */
 static u8 fake_router_bssid[ETH_ALEN] __ro_after_init = {};
 
+static void virt_wifi_inform_bss(struct wiphy *wiphy)
+{
+	u64 tsf = div_u64(ktime_get_boottime_ns(), 1000);
+	struct cfg80211_bss *informed_bss;
+	static const struct {
+		u8 tag;
+		u8 len;
+		u8 ssid[8];
+	} __packed ssid = {
+		.tag = WLAN_EID_SSID,
+		.len = 8,
+		.ssid = "VirtWifi",
+	};
+
+	informed_bss = cfg80211_inform_bss(wiphy, &channel_5ghz,
+					   CFG80211_BSS_FTYPE_PRESP,
+					   fake_router_bssid, tsf,
+					   WLAN_CAPABILITY_ESS, 0,
+					   (void *)&ssid, sizeof(ssid),
+					   DBM_TO_MBM(-50), GFP_KERNEL);
+	cfg80211_put_bss(wiphy, informed_bss);
+}
+
 /* Called with the rtnl lock held. */
 static int virt_wifi_scan(struct wiphy *wiphy,
 			  struct cfg80211_scan_request *request)
@@ -148,6 +174,9 @@ static int virt_wifi_scan(struct wiphy *wiphy,
 
 	priv->scan_request = request;
 	schedule_delayed_work(&priv->scan_result, HZ * 2);
+	if (priv->network_simulation &&
+	    priv->network_simulation->notify_scan_trigger)
+		priv->network_simulation->notify_scan_trigger(wiphy, request);
 
 	return 0;
 }
@@ -155,28 +184,19 @@ static int virt_wifi_scan(struct wiphy *wiphy,
 /* Acquires and releases the rdev BSS lock. */
 static void virt_wifi_scan_result(struct work_struct *work)
 {
-	struct {
-		u8 tag;
-		u8 len;
-		u8 ssid[8];
-	} __packed ssid = {
-		.tag = WLAN_EID_SSID, .len = 8, .ssid = "VirtWifi",
-	};
-	struct cfg80211_bss *informed_bss;
 	struct virt_wifi_wiphy_priv *priv =
 		container_of(work, struct virt_wifi_wiphy_priv,
 			     scan_result.work);
 	struct wiphy *wiphy = priv_to_wiphy(priv);
 	struct cfg80211_scan_info scan_info = { .aborted = false };
 
-	informed_bss = cfg80211_inform_bss(wiphy, &channel_5ghz,
-					   CFG80211_BSS_FTYPE_PRESP,
-					   fake_router_bssid,
-					   ktime_get_boottime_ns(),
-					   WLAN_CAPABILITY_ESS, 0,
-					   (void *)&ssid, sizeof(ssid),
-					   DBM_TO_MBM(-50), GFP_KERNEL);
-	cfg80211_put_bss(wiphy, informed_bss);
+	virt_wifi_inform_bss(wiphy);
+
+	if(priv->network_simulation &&
+	   priv->network_simulation->generate_virt_scan_result) {
+		if(priv->network_simulation->generate_virt_scan_result(wiphy))
+			wiphy_err(wiphy, "Fail to generater the simulated scan result.\n");
+	}
 
 	/* Schedules work which acquires and releases the rtnl lock. */
 	cfg80211_scan_done(priv->scan_request, &scan_info);
@@ -224,10 +244,12 @@ static int virt_wifi_connect(struct wiphy *wiphy, struct net_device *netdev,
 	if (!could_schedule)
 		return -EBUSY;
 
-	if (sme->bssid)
+	if (sme->bssid) {
 		ether_addr_copy(priv->connect_requested_bss, sme->bssid);
-	else
+	} else {
+		virt_wifi_inform_bss(wiphy);
 		eth_zero_addr(priv->connect_requested_bss);
+	}
 
 	wiphy_debug(wiphy, "connect\n");
 
@@ -240,11 +262,13 @@ static void virt_wifi_connect_complete(struct work_struct *work)
 	struct virt_wifi_netdev_priv *priv =
 		container_of(work, struct virt_wifi_netdev_priv, connect.work);
 	u8 *requested_bss = priv->connect_requested_bss;
-	bool has_addr = !is_zero_ether_addr(requested_bss);
 	bool right_addr = ether_addr_equal(requested_bss, fake_router_bssid);
 	u16 status = WLAN_STATUS_SUCCESS;
 
-	if (!priv->is_up || (has_addr && !right_addr))
+	if (is_zero_ether_addr(requested_bss))
+		requested_bss = NULL;
+
+	if (!priv->is_up || (requested_bss && !right_addr))
 		status = WLAN_STATUS_UNSPECIFIED_FAILURE;
 	else
 		priv->is_connected = true;
@@ -365,6 +389,8 @@ static struct wiphy *virt_wifi_make_wiphy(void)
 	priv = wiphy_priv(wiphy);
 	priv->being_deleted = false;
 	priv->scan_request = NULL;
+	priv->network_simulation = NULL;
+
 	INIT_DELAYED_WORK(&priv->scan_result, virt_wifi_scan_result);
 
 	err = wiphy_register(wiphy);
@@ -380,7 +406,6 @@ static struct wiphy *virt_wifi_make_wiphy(void)
 static void virt_wifi_destroy_wiphy(struct wiphy *wiphy)
 {
 	struct virt_wifi_wiphy_priv *priv;
-
 	WARN(!wiphy, "%s called with null wiphy", __func__);
 	if (!wiphy)
 		return;
@@ -414,8 +439,13 @@ static netdev_tx_t virt_wifi_start_xmit(struct sk_buff *skb,
 static int virt_wifi_net_device_open(struct net_device *dev)
 {
 	struct virt_wifi_netdev_priv *priv = netdev_priv(dev);
-
+	struct virt_wifi_wiphy_priv *w_priv;
 	priv->is_up = true;
+	w_priv = wiphy_priv(dev->ieee80211_ptr->wiphy);
+	if(w_priv->network_simulation &&
+	   w_priv->network_simulation->notify_device_open)
+		w_priv->network_simulation->notify_device_open(dev);
+
 	return 0;
 }
 
@@ -423,15 +453,21 @@ static int virt_wifi_net_device_open(struct net_device *dev)
 static int virt_wifi_net_device_stop(struct net_device *dev)
 {
 	struct virt_wifi_netdev_priv *n_priv = netdev_priv(dev);
+	struct virt_wifi_wiphy_priv *w_priv;
 
 	n_priv->is_up = false;
 
 	if (!dev->ieee80211_ptr)
 		return 0;
+	w_priv = wiphy_priv(dev->ieee80211_ptr->wiphy);
 
 	virt_wifi_cancel_scan(dev->ieee80211_ptr->wiphy);
 	virt_wifi_cancel_connect(dev);
 	netif_carrier_off(dev);
+
+	if (w_priv->network_simulation &&
+	    w_priv->network_simulation->notify_device_stop)
+		w_priv->network_simulation->notify_device_stop(dev);
 
 	return 0;
 }
@@ -666,6 +702,27 @@ static void __exit virt_wifi_cleanup_module(void)
 	virt_wifi_destroy_wiphy(common_wiphy);
 	unregister_netdevice_notifier(&virt_wifi_notifier);
 }
+
+int virt_wifi_register_network_simulation
+	(struct virt_wifi_network_simulation *ops)
+{
+	struct virt_wifi_wiphy_priv *priv = wiphy_priv(common_wiphy);
+	if (priv->network_simulation)
+		return -EEXIST;
+	priv->network_simulation = ops;
+	return 0;
+}
+EXPORT_SYMBOL_GPL(virt_wifi_register_network_simulation);
+
+int virt_wifi_unregister_network_simulation(void)
+{
+	struct virt_wifi_wiphy_priv *priv = wiphy_priv(common_wiphy);
+	if(!priv->network_simulation)
+		return -ENODATA;
+	priv->network_simulation = NULL;
+	return 0;
+}
+EXPORT_SYMBOL_GPL(virt_wifi_unregister_network_simulation);
 
 module_init(virt_wifi_init_module);
 module_exit(virt_wifi_cleanup_module);

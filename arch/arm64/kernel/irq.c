@@ -10,10 +10,10 @@
  * Copyright (C) 2012 ARM Ltd.
  */
 
-#include <linux/kernel_stat.h>
 #include <linux/irq.h>
 #include <linux/memory.h>
 #include <linux/smp.h>
+#include <linux/hardirq.h>
 #include <linux/init.h>
 #include <linux/irqchip.h>
 #include <linux/kprobes.h>
@@ -21,20 +21,12 @@
 #include <linux/vmalloc.h>
 #include <asm/daifflags.h>
 #include <asm/vmap_stack.h>
-
-unsigned long irq_err_count;
+#include <asm/scs.h>
 
 /* Only access this in an NMI enter/exit */
 DEFINE_PER_CPU(struct nmi_ctx, nmi_contexts);
 
 DEFINE_PER_CPU(unsigned long *, irq_stack_ptr);
-
-int arch_show_interrupts(struct seq_file *p, int prec)
-{
-	show_ipi_list(p, prec);
-	seq_printf(p, "%*s: %10lu\n", prec, "Err", irq_err_count);
-	return 0;
-}
 
 #ifdef CONFIG_VMAP_STACK
 static void init_irq_stacks(void)
@@ -63,6 +55,7 @@ static void init_irq_stacks(void)
 void __init init_IRQ(void)
 {
 	init_irq_stacks();
+	scs_init_irq();
 	irqchip_init();
 	if (!handle_arch_irq)
 		panic("No interrupt controller found.");

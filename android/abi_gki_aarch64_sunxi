@@ -1,0 +1,282 @@
+[abi_symbol_list]
+# commonly used symbols
+  pinctrl_get
+  pinctrl_gpio_set_config
+  of_find_node_by_type
+  kmalloc_order
+  down_interruptible
+  dev_pm_set_wake_irq
+
+# required by ccu-sunxi-ng.ko
+  clk_notifier_register
+  of_clk_hw_register
+  reset_controller_register
+
+# required by sunxi_pinctrl.ko
+  handle_fasteoi_irq
+
+# required by sunxi_uart.ko
+  uart_get_divisor
+  uart_handle_cts_change
+  uart_handle_dcd_change
+  unregister_console
+
+# required by timer-sunxi.ko
+  clockevents_config_and_register
+  __clocksource_register_scale
+  setup_irq
+
+# required by dump_reg.ko
+  class_create_file_ns
+  class_remove_file_ns
+
+# required by sunxi_nand.ko
+  rq_flush_dcache_pages
+
+# required by sunxi_iommu.ko
+  iommu_group_register_notifier
+  iommu_group_alloc
+
+# required by uas.ko
+  int_to_scsilun
+  scmd_printk
+  scsi_block_requests
+  scsi_change_queue_depth
+  scsi_print_command
+  scsi_unblock_requests
+  usb_alloc_streams
+  usb_free_streams
+  usb_kill_anchored_urbs
+  usb_unanchor_urb
+  usb_wait_anchor_empty_timeout
+
+# required by ums-realtek.ko
+  usb_bulk_msg
+
+# required by ums-sddr09.ko
+  usb_reset_configuration
+
+# required by clk-ddr.ko
+  devm_of_iomap
+
+# required by sunxi-dmc.ko
+  devm_devfreq_register_opp_notifier
+
+# required by irq-sunxi-8i-nmi.ko
+  irq_domain_xlate_onetwocell
+  of_io_request_and_map
+
+# required by tee.ko optee.ko
+  gen_pool_best_fit
+  gen_pool_set_algo
+  gen_pool_virt_to_phys
+  dump_page
+
+# required by sunxi_nsi.ko
+  device_remove_groups
+
+# required by sunxi-ce.ko
+  crypto_register_aead
+  crypto_register_ahash
+  crypto_register_rng
+  crypto_unregister_ahash
+  crypto_unregister_rng
+
+# required by required by audio*.ko :
+  __devm_release_region
+  snd_dmaengine_pcm_close_release_chan
+  snd_dmaengine_pcm_get_chan
+  snd_dmaengine_pcm_open_request_chan
+  snd_dmaengine_pcm_pointer
+  snd_dmaengine_pcm_trigger
+  snd_hwparams_to_dma_slave_config
+  snd_soc_add_card_controls
+  snd_soc_dai_set_clkdiv
+  snd_soc_dai_set_pll
+  snd_soc_register_card
+
+# required by xr829.ko
+  bridge_tunnel_header
+  cfg80211_assoc_timeout
+  cfg80211_auth_timeout
+  cfg80211_classify8021d
+  cfg80211_cqm_pktloss_notify
+  cfg80211_rx_assoc_resp
+  cfg80211_rx_mlme_mgmt
+  cfg80211_sched_scan_stopped
+  cfg80211_tx_mlme_mgmt
+  crc32_be
+  __dev_kfree_skb_irq
+  __hw_addr_init
+  __hw_addr_sync
+  __hw_addr_unsync
+  ieee80211_amsdu_to_8023s
+  ieee80211_bss_get_elem
+  ieee80211_data_to_8023_exthdr
+  ieee80211_radiotap_iterator_init
+  ieee80211_radiotap_iterator_next
+  kernel_param_lock
+  kernel_param_unlock
+  round_jiffies_relative
+  sdio_align_size
+  __sw_hweight16
+
+# required by arc4.ko
+  arc4_crypt
+  arc4_setkey
+  crypto_register_skcipher
+  crypto_unregister_skcipher
+  skcipher_walk_done
+  skcipher_walk_virt
+
+# required by vin_v4l2.ko
+  v4l2_i2c_subdev_init
+  media_entity_find_link
+  media_entity_remote_pad
+  __media_entity_setup_link
+  media_entity_setup_link
+  media_graph_walk_init
+  media_graph_walk_next
+  media_graph_walk_start
+  spi_busnum_to_master
+  spi_unregister_device
+  v4l2_ctrl_cluster
+  v4l2_ctrl_new_int_menu
+  v4l2_ctrl_subdev_subscribe_event
+  v4l2_event_subdev_unsubscribe
+  v4l2_g_ctrl
+  v4l2_i2c_new_subdev
+  v4l2_spi_new_subdev
+  v4l_bound_align_image
+  vb2_plane_cookie
+
+# required by init-input.ko
+  of_find_i2c_device_by_node
+
+# required by ntfs.ko
+  block_is_partially_uptodate
+  buffer_migrate_page
+  create_empty_buffers
+  d_add_ci
+  d_obtain_alias
+  generic_error_remove_page
+  generic_file_open
+  ihold
+  load_nls_default
+  __lock_page
+  make_bad_inode
+  truncate_inode_pages_final
+  __vmalloc
+  io_schedule
+  is_bad_inode
+  end_buffer_read_sync
+
+# required by squashfs.ko
+  get_tree_bdev
+  iget_locked
+  ll_rw_block
+  logfc
+  zlib_inflate
+  zlib_inflateEnd
+  zlib_inflateInit2
+  zlib_inflate_workspacesize
+
+# required by cpufreq_ondemand.ko
+  cpufreq_dbs_governor_init
+  cpufreq_dbs_governor_exit
+  cpufreq_dbs_governor_start
+  cpufreq_dbs_governor_stop
+  cpufreq_dbs_governor_limits
+  store_sampling_rate
+  gov_update_cpu_data
+  dbs_update
+  get_cpu_idle_time_us
+
+# required by disp.ko
+  memblock_free
+
+#required by ehci-sunxi.ko
+  ehci_init_driver
+  ehci_resume
+  ehci_suspend
+
+# required by irq-sun8i-nmi.ko
+  __irq_alloc_domain_generic_chips
+  irq_gc_ack_set_bit
+  irq_gc_mask_clr_bit
+  irq_gc_mask_set_bit
+  irq_generic_chip_ops
+  irq_get_domain_generic_chip
+  irq_setup_alt_chip
+
+# required by lan78xx.ko
+  __bitmap_or
+  fixed_phy_register
+  fixed_phy_unregister
+  __genphy_config_aneg
+  genphy_read_status
+  irq_create_mapping_affinity
+  irq_domain_add_simple
+  mdiobus_read
+  mdiobus_write
+  of_mdiobus_register
+  phy_connect_direct
+  phy_ethtool_get_eee
+  phy_ethtool_ksettings_get
+  phy_ethtool_ksettings_set
+  phy_ethtool_set_eee
+  phy_ethtool_set_wol
+  phy_find_first
+  phy_read_mmd
+  phy_register_fixup_for_uid
+  phy_remove_link_mode
+  phy_unregister_fixup_for_uid
+  phy_write_mmd
+  usb_scuttle_anchored_urbs
+
+# required by pinctrl-sunxi.ko
+  gpiochip_generic_config
+  irq_create_mapping_affinity
+  pinctrl_gpio_direction_input
+  pinctrl_gpio_direction_output
+
+# required by rtc-sunxi-ccu.ko
+  clk_unregister_fixed_factor
+  clk_unregister_fixed_rate
+  clk_unregister_gate
+
+# required by smsc75xx.ko and smsc95xx.ko
+  crc16
+  of_get_mac_address
+  usbnet_defer_kevent
+
+# required by snd-soc-sunxi.ko
+  snd_dmaengine_pcm_open
+  snd_dmaengine_pcm_pointer_no_residue
+
+# required by sun50i-cpufreq-nvmem.ko
+  dev_pm_opp_of_get_opp_desc_node
+  dev_pm_opp_put_prop_name
+  dev_pm_opp_put_supported_hw
+  dev_pm_opp_set_prop_name
+
+# required by sun6i-dma.ko
+  dma_get_any_slave_channel
+
+# required by sunxi-keyboard.ko
+  iio_map_array_register
+  iio_map_array_unregister
+
+# required by sunxi_rfkill.ko
+  rfkill_set_states
+
+# required by aic8800_bsp.ko
+  skb_dequeue_tail
+  wait_for_completion_killable_timeout
+
+# required by aic8800_fbrv.ko
+  cfg80211_cac_event
+  cfg80211_chandef_valid
+  cfg80211_external_auth_request
+  cfg80211_radar_event
+  cfg80211_stop_iface

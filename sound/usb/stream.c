@@ -67,9 +67,13 @@ static void snd_usb_audio_stream_free(struct snd_usb_stream *stream)
 static void snd_usb_audio_pcm_free(struct snd_pcm *pcm)
 {
 	struct snd_usb_stream *stream = pcm->private_data;
+	struct snd_usb_audio *chip;
 	if (stream) {
+		mutex_lock(&stream->chip->dev_lock);
+		chip = stream->chip;
 		stream->pcm = NULL;
 		snd_usb_audio_stream_free(stream);
+		mutex_unlock(&chip->dev_lock);
 	}
 }
 
@@ -193,16 +197,16 @@ static int usb_chmap_ctl_get(struct snd_kcontrol *kcontrol,
 	struct snd_pcm_chmap *info = snd_kcontrol_chip(kcontrol);
 	struct snd_usb_substream *subs = info->private_data;
 	struct snd_pcm_chmap_elem *chmap = NULL;
-	int i;
+	int i = 0;
 
-	memset(ucontrol->value.integer.value, 0,
-	       sizeof(ucontrol->value.integer.value));
 	if (subs->cur_audiofmt)
 		chmap = subs->cur_audiofmt->chmap;
 	if (chmap) {
 		for (i = 0; i < chmap->channels; i++)
 			ucontrol->value.integer.value[i] = chmap->map[i];
 	}
+	for (; i < subs->channels_max; i++)
+		ucontrol->value.integer.value[i] = 0;
 	return 0;
 }
 
@@ -240,7 +244,7 @@ static int add_chmap(struct snd_pcm *pcm, int stream,
 static struct snd_pcm_chmap_elem *convert_chmap(int channels, unsigned int bits,
 						int protocol)
 {
-	static unsigned int uac1_maps[] = {
+	static const unsigned int uac1_maps[] = {
 		SNDRV_CHMAP_FL,		/* left front */
 		SNDRV_CHMAP_FR,		/* right front */
 		SNDRV_CHMAP_FC,		/* center front */
@@ -255,7 +259,7 @@ static struct snd_pcm_chmap_elem *convert_chmap(int channels, unsigned int bits,
 		SNDRV_CHMAP_TC,		/* top */
 		0 /* terminator */
 	};
-	static unsigned int uac2_maps[] = {
+	static const unsigned int uac2_maps[] = {
 		SNDRV_CHMAP_FL,		/* front left */
 		SNDRV_CHMAP_FR,		/* front right */
 		SNDRV_CHMAP_FC,		/* front center */

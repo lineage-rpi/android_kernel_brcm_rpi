@@ -37,8 +37,18 @@
 #define COMPILER_HAS_GENERIC_BUILTIN_OVERFLOW 1
 #endif
 
-/* The following are for compatibility with GCC, from compiler-gcc.h,
- * and may be redefined here because they should not be shared with other
- * compilers, like ICC.
- */
-#define barrier() __asm__ __volatile__("" : : : "memory")
+#if __has_feature(shadow_call_stack)
+# define __noscs	__attribute__((__no_sanitize__("shadow-call-stack")))
+#else
+# define __noscs
+#endif
+
+#ifdef CONFIG_LTO_CLANG
+#ifdef CONFIG_FTRACE_MCOUNT_RECORD
+#define __norecordmcount \
+	__attribute__((__section__(".text..ftrace")))
+#endif
+
+
+#define __nocfi		__attribute__((__no_sanitize__("cfi")))
+#endif

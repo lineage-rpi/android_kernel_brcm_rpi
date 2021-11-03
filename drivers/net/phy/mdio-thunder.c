@@ -84,7 +84,7 @@ static int thunder_mdiobus_pci_probe(struct pci_dev *pdev,
 		nexus->buses[i] = bus;
 		i++;
 
-		bus->register_base = (u64)nexus->bar0 +
+		bus->register_base = nexus->bar0 +
 			r.start - pci_resource_start(pdev, 0);
 
 		smi_en.u64 = 0;
@@ -126,7 +126,6 @@ static void thunder_mdiobus_pci_remove(struct pci_dev *pdev)
 			continue;
 
 		mdiobus_unregister(bus->mii_bus);
-		mdiobus_free(bus->mii_bus);
 		oct_mdio_writeq(0, bus->register_base + SMI_EN);
 	}
 	pci_set_drvdata(pdev, NULL);

@@ -79,6 +79,7 @@ config IXP4XX_TIMER
 	bool "Intel XScale IXP4xx timer driver" if COMPILE_TEST
 	depends on HAS_IOMEM
 	select CLKSRC_MMIO
+	select TIMER_OF if OF
 	help
 	  Enables support for the Intel XScale IXP4xx SoC timer.
 
@@ -127,7 +128,7 @@ config RDA_TIMER
 	  Enables the support for the RDA Micro timer driver.
 
 config SUN4I_TIMER
-	bool "Sun4i timer driver" if COMPILE_TEST
+	bool "Sun4i timer driver"
 	depends on HAS_IOMEM
 	select CLKSRC_MMIO
 	select TIMER_OF
@@ -473,7 +474,7 @@ config SYS_SUPPORTS_SH_CMT
         bool
 
 config MTK_TIMER
-	bool "Mediatek timer driver" if COMPILE_TEST
+	bool "Mediatek timer driver"
 	depends on HAS_IOMEM
 	select TIMER_OF
 	select CLKSRC_MMIO
@@ -481,10 +482,8 @@ config MTK_TIMER
 	  Support for Mediatek timer driver.
 
 config SPRD_TIMER
-	bool "Spreadtrum timer driver" if EXPERT
+	tristate "Spreadtrum timer driver" if EXPERT
 	depends on HAS_IOMEM
-	depends on (ARCH_SPRD || COMPILE_TEST)
-	default ARCH_SPRD
 	select TIMER_OF
 	help
 	  Enables support for the Spreadtrum timer driver.

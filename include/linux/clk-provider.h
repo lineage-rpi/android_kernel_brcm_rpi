@@ -32,6 +32,7 @@
 #define CLK_OPS_PARENT_ENABLE	BIT(12)
 /* duty cycle call may be forwarded to the parent clock */
 #define CLK_DUTY_CYCLE_PARENT	BIT(13)
+#define CLK_DONT_HOLD_STATE	BIT(14) /* Don't hold state */
 
 struct clk;
 struct clk_hw;
@@ -199,6 +200,13 @@ struct clk_duty {
  *		directory is provided as an argument.  Called with
  *		prepare_lock held.  Returns 0 on success, -EERROR otherwise.
  *
+ * @pre_rate_change: Optional callback for a clock to fulfill its rate
+ *		change requirements before any rate change has occurred in
+ *		its clock tree. Returns 0 on success, -EERROR otherwise.
+ *
+ * @post_rate_change: Optional callback for a clock to clean up any
+ *		requirements that were needed while the clock and its tree
+ *		was changing states. Returns 0 on success, -EERROR otherwise.
  *
  * The clk_enable/clk_disable and clk_prepare/clk_unprepare pairs allow
  * implementations to split any work between atomic (enable) and sleepable
@@ -245,6 +253,12 @@ struct clk_ops {
 					  struct clk_duty *duty);
 	void		(*init)(struct clk_hw *hw);
 	void		(*debug_init)(struct clk_hw *hw, struct dentry *dentry);
+	int		(*pre_rate_change)(struct clk_hw *hw,
+					   unsigned long rate,
+					   unsigned long new_rate);
+	int		(*post_rate_change)(struct clk_hw *hw,
+					    unsigned long old_rate,
+					    unsigned long rate);
 };
 
 /**
@@ -802,6 +816,7 @@ void devm_clk_unregister(struct device *dev, struct clk *clk);
 
 void clk_hw_unregister(struct clk_hw *hw);
 void devm_clk_hw_unregister(struct device *dev, struct clk_hw *hw);
+void clk_sync_state(struct device *dev);
 
 /* helper functions */
 const char *__clk_get_name(const struct clk *clk);

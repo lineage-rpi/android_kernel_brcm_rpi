@@ -67,10 +67,10 @@ static bool range_contains(char *haystack_start, size_t haystack_size,
 #define INIT_STRUCT_none		/**/
 #define INIT_STRUCT_zero		= { }
 #define INIT_STRUCT_static_partial	= { .two = 0, }
-#define INIT_STRUCT_static_all		= { .one = arg->one,		\
-					    .two = arg->two,		\
-					    .three = arg->three,	\
-					    .four = arg->four,		\
+#define INIT_STRUCT_static_all		= { .one = 0,			\
+					    .two = 0,			\
+					    .three = 0,			\
+					    .four = 0,			\
 					}
 #define INIT_STRUCT_dynamic_partial	= { .two = arg->two, }
 #define INIT_STRUCT_dynamic_all		= { .one = arg->one,		\
@@ -84,16 +84,16 @@ static bool range_contains(char *haystack_start, size_t haystack_size,
 					var.one = 0;			\
 					var.two = 0;			\
 					var.three = 0;			\
-					memset(&var.four, 0,		\
-					       sizeof(var.four))
+					var.four = 0
 
 /*
  * @name: unique string name for the test
  * @var_type: type to be tested for zeroing initialization
  * @which: is this a SCALAR, STRING, or STRUCT type?
  * @init_level: what kind of initialization is performed
+ * @xfail: is this test expected to fail?
  */
-#define DEFINE_TEST_DRIVER(name, var_type, which)		\
+#define DEFINE_TEST_DRIVER(name, var_type, which, xfail)	\
 /* Returns 0 on success, 1 on failure. */			\
 static noinline __init int test_ ## name (void)			\
 {								\
@@ -139,13 +139,14 @@ static noinline __init int test_ ## name (void)			\
 	for (sum = 0, i = 0; i < target_size; i++)		\
 		sum += (check_buf[i] == 0xFF);			\
 								\
-	if (sum == 0)						\
+	if (sum == 0) {						\
 		pr_info(#name " ok\n");				\
-	else							\
-		pr_warn(#name " FAIL (uninit bytes: %d)\n",	\
-			sum);					\
-								\
-	return (sum != 0);					\
+		return 0;					\
+	} else {						\
+		pr_warn(#name " %sFAIL (uninit bytes: %d)\n",	\
+			(xfail) ? "X" : "", sum);		\
+		return (xfail) ? 0 : 1;				\
+	}							\
 }
 #define DEFINE_TEST(name, var_type, which, init_level)		\
 /* no-op to force compiler into ignoring "uninitialized" vars */\
@@ -189,7 +190,7 @@ static noinline __init int leaf_ ## name(unsigned long sp,	\
 								\
 	return (int)buf[0] | (int)buf[sizeof(buf) - 1];		\
 }								\
-DEFINE_TEST_DRIVER(name, var_type, which)
+DEFINE_TEST_DRIVER(name, var_type, which, 0)
 
 /* Structure with no padding. */
 struct test_packed {
@@ -208,18 +209,13 @@ struct test_small_hole {
 	unsigned long four;
 };
 
-/* Try to trigger unhandled padding in a structure. */
-struct test_aligned {
-	u32 internal1;
-	u64 internal2;
-} __aligned(64);
-
+/* Trigger unhandled padding in a structure. */
 struct test_big_hole {
 	u8 one;
 	u8 two;
 	u8 three;
 	/* 61 byte padding hole here. */
-	struct test_aligned four;
+	u8 four __aligned(64);
 } __aligned(64);
 
 struct test_trailing_hole {
@@ -326,8 +322,14 @@ static noinline __init int leaf_switch_2_none(unsigned long sp, bool fill,
 	return __leaf_switch_none(2, fill);
 }
 
-DEFINE_TEST_DRIVER(switch_1_none, uint64_t, SCALAR);
-DEFINE_TEST_DRIVER(switch_2_none, uint64_t, SCALAR);
+/*
+ * These are expected to fail for most configurations because neither
+ * GCC nor Clang have a way to perform initialization of variables in
+ * non-code areas (i.e. in a switch statement before the first "case").
+ * https://bugs.llvm.org/show_bug.cgi?id=44916
+ */
+DEFINE_TEST_DRIVER(switch_1_none, uint64_t, SCALAR, 1);
+DEFINE_TEST_DRIVER(switch_2_none, uint64_t, SCALAR, 1);
 
 static int __init test_stackinit_init(void)
 {

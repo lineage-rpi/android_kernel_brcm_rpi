@@ -50,7 +50,7 @@ config MEDIA_ANALOG_TV_SUPPORT
 		will disable support for them.
 
 config MEDIA_DIGITAL_TV_SUPPORT
-	bool "Digital TV support"
+	tristate "Digital TV support"
 	help
 	  Enable digital TV support.
 
@@ -123,7 +123,7 @@ config DVB_CORE
 	depends on MEDIA_SUPPORT
 	depends on MEDIA_DIGITAL_TV_SUPPORT
 	depends on (I2C || I2C=n)
-	default y
+	default MEDIA_DIGITAL_TV_SUPPORT
 	select CRC32
 
 config DVB_MMAP

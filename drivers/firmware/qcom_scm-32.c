@@ -417,7 +417,7 @@ void __qcom_scm_cpu_power_down(u32 flags)
 			flags & QCOM_SCM_FLUSH_FLAG_MASK);
 }
 
-int __qcom_scm_is_call_available(struct device *dev, u32 svc_id, u32 cmd_id)
+bool __qcom_scm_is_call_available(struct device *dev, u32 svc_id, u32 cmd_id)
 {
 	int ret;
 	__le32 svc_cmd = cpu_to_le32((svc_id << 10) | cmd_id);
@@ -426,10 +426,7 @@ int __qcom_scm_is_call_available(struct device *dev, u32 svc_id, u32 cmd_id)
 	ret = qcom_scm_call(dev, QCOM_SCM_SVC_INFO, QCOM_IS_CALL_AVAIL_CMD,
 			    &svc_cmd, sizeof(svc_cmd), &ret_val,
 			    sizeof(ret_val));
-	if (ret)
-		return ret;
-
-	return le32_to_cpu(ret_val);
+	return ret ? false : !!ret_val;
 }
 
 int __qcom_scm_hdcp_req(struct device *dev, struct qcom_scm_hdcp_req *req,
@@ -548,6 +545,20 @@ int __qcom_scm_pas_mss_reset(struct device *dev, bool reset)
 	return ret ? : le32_to_cpu(out);
 }
 
+int __qcom_scm_ice_invalidate_key(struct device *dev, u32 index)
+{
+	/* Untested on 32-bit, so disabled for now. */
+	return -ENODEV;
+}
+
+int __qcom_scm_ice_set_key(struct device *dev, u32 index, dma_addr_t key_phys,
+			   u32 key_size, enum qcom_scm_ice_cipher cipher,
+			   u32 data_unit_size)
+{
+	/* Untested on 32-bit, so disabled for now. */
+	return -ENODEV;
+}
+
 int __qcom_scm_set_dload_mode(struct device *dev, bool enable)
 {
 	return qcom_scm_call_atomic2(QCOM_SCM_SVC_BOOT, QCOM_SCM_SET_DLOAD_MODE,
@@ -613,4 +624,9 @@ int __qcom_scm_io_writel(struct device *dev, phys_addr_t addr, unsigned int val)
 {
 	return qcom_scm_call_atomic2(QCOM_SCM_SVC_IO, QCOM_SCM_IO_WRITE,
 				     addr, val);
+}
+
+int __qcom_scm_qsmmu500_wait_safe_toggle(struct device *dev, bool enable)
+{
+	return -ENODEV;
 }

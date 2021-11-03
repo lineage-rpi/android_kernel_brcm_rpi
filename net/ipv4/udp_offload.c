@@ -184,8 +184,81 @@ out_unlock:
 }
 EXPORT_SYMBOL(skb_udp_tunnel_segment);
 
+static void __udpv4_gso_segment_csum(struct sk_buff *seg,
+				     __be32 *oldip, __be32 *newip,
+				     __be16 *oldport, __be16 *newport)
+{
+	struct udphdr *uh;
+	struct iphdr *iph;
+
+	if (*oldip == *newip && *oldport == *newport)
+		return;
+
+	uh = udp_hdr(seg);
+	iph = ip_hdr(seg);
+
+	if (uh->check) {
+		inet_proto_csum_replace4(&uh->check, seg, *oldip, *newip,
+					 true);
+		inet_proto_csum_replace2(&uh->check, seg, *oldport, *newport,
+					 false);
+		if (!uh->check)
+			uh->check = CSUM_MANGLED_0;
+	}
+	*oldport = *newport;
+
+	csum_replace4(&iph->check, *oldip, *newip);
+	*oldip = *newip;
+}
+
+static struct sk_buff *__udpv4_gso_segment_list_csum(struct sk_buff *segs)
+{
+	struct sk_buff *seg;
+	struct udphdr *uh, *uh2;
+	struct iphdr *iph, *iph2;
+
+	seg = segs;
+	uh = udp_hdr(seg);
+	iph = ip_hdr(seg);
+
+	if ((udp_hdr(seg)->dest == udp_hdr(seg->next)->dest) &&
+	    (udp_hdr(seg)->source == udp_hdr(seg->next)->source) &&
+	    (ip_hdr(seg)->daddr == ip_hdr(seg->next)->daddr) &&
+	    (ip_hdr(seg)->saddr == ip_hdr(seg->next)->saddr))
+		return segs;
+
+	while ((seg = seg->next)) {
+		uh2 = udp_hdr(seg);
+		iph2 = ip_hdr(seg);
+
+		__udpv4_gso_segment_csum(seg,
+					 &iph2->saddr, &iph->saddr,
+					 &uh2->source, &uh->source);
+		__udpv4_gso_segment_csum(seg,
+					 &iph2->daddr, &iph->daddr,
+					 &uh2->dest, &uh->dest);
+	}
+
+	return segs;
+}
+
+static struct sk_buff *__udp_gso_segment_list(struct sk_buff *skb,
+					      netdev_features_t features,
+					      bool is_ipv6)
+{
+	unsigned int mss = skb_shinfo(skb)->gso_size;
+
+	skb = skb_segment_list(skb, features, skb_mac_header_len(skb));
+	if (IS_ERR(skb))
+		return skb;
+
+	udp_hdr(skb)->len = htons(sizeof(struct udphdr) + mss);
+
+	return is_ipv6 ? skb : __udpv4_gso_segment_list_csum(skb);
+}
+
 struct sk_buff *__udp_gso_segment(struct sk_buff *gso_skb,
-				  netdev_features_t features)
+				  netdev_features_t features, bool is_ipv6)
 {
 	struct sock *sk = gso_skb->sk;
 	unsigned int sum_truesize = 0;
@@ -195,6 +268,9 @@ struct sk_buff *__udp_gso_segment(struct sk_buff *gso_skb,
 	bool copy_dtor;
 	__sum16 check;
 	__be16 newlen;
+
+	if (skb_shinfo(gso_skb)->gso_type & SKB_GSO_FRAGLIST)
+		return __udp_gso_segment_list(gso_skb, features, is_ipv6);
 
 	mss = skb_shinfo(gso_skb)->gso_size;
 	if (gso_skb->len <= sizeof(*uh) + mss)
@@ -308,7 +384,7 @@ static struct sk_buff *udp4_ufo_fragment(struct sk_buff *skb,
 		goto out;
 
 	if (skb_shinfo(skb)->gso_type & SKB_GSO_UDP_L4)
-		return __udp_gso_segment(skb, features);
+		return __udp_gso_segment(skb, features, false);
 
 	mss = skb_shinfo(skb)->gso_size;
 	if (unlikely(skb->len <= mss))
@@ -354,6 +430,7 @@ static struct sk_buff *udp_gro_receive_segment(struct list_head *head,
 	struct udphdr *uh2;
 	struct sk_buff *p;
 	unsigned int ulen;
+	int ret = 0;
 
 	/* requires non zero csum, for symmetry with GSO */
 	if (!uh->check) {
@@ -369,7 +446,6 @@ static struct sk_buff *udp_gro_receive_segment(struct list_head *head,
 	}
 	/* pull encapsulating udp header */
 	skb_gro_pull(skb, sizeof(struct udphdr));
-	skb_gro_postpull_rcsum(skb, uh, sizeof(struct udphdr));
 
 	list_for_each_entry(p, head, list) {
 		if (!NAPI_GRO_CB(p)->same_flow)
@@ -383,14 +459,40 @@ static struct sk_buff *udp_gro_receive_segment(struct list_head *head,
 			continue;
 		}
 
+		if (NAPI_GRO_CB(skb)->is_flist != NAPI_GRO_CB(p)->is_flist) {
+			NAPI_GRO_CB(skb)->flush = 1;
+			return p;
+		}
+
 		/* Terminate the flow on len mismatch or if it grow "too much".
 		 * Under small packet flood GRO count could elsewhere grow a lot
 		 * leading to excessive truesize values.
 		 * On len mismatch merge the first packet shorter than gso_size,
 		 * otherwise complete the GRO packet.
 		 */
-		if (ulen > ntohs(uh2->len) || skb_gro_receive(p, skb) ||
-		    ulen != ntohs(uh2->len) ||
+		if (ulen > ntohs(uh2->len)) {
+			pp = p;
+		} else {
+			if (NAPI_GRO_CB(skb)->is_flist) {
+				if (!pskb_may_pull(skb, skb_gro_offset(skb))) {
+					NAPI_GRO_CB(skb)->flush = 1;
+					return NULL;
+				}
+				if ((skb->ip_summed != p->ip_summed) ||
+				    (skb->csum_level != p->csum_level)) {
+					NAPI_GRO_CB(skb)->flush = 1;
+					return NULL;
+				}
+				ret = skb_gro_receive_list(p, skb);
+			} else {
+				skb_gro_postpull_rcsum(skb, uh,
+						       sizeof(struct udphdr));
+
+				ret = skb_gro_receive(p, skb);
+			}
+		}
+
+		if (ret || ulen != ntohs(uh2->len) ||
 		    NAPI_GRO_CB(p)->count >= UDP_GRO_CNT_MAX)
 			pp = p;
 
@@ -401,36 +503,35 @@ static struct sk_buff *udp_gro_receive_segment(struct list_head *head,
 	return NULL;
 }
 
-INDIRECT_CALLABLE_DECLARE(struct sock *udp6_lib_lookup_skb(struct sk_buff *skb,
-						   __be16 sport, __be16 dport));
 struct sk_buff *udp_gro_receive(struct list_head *head, struct sk_buff *skb,
-				struct udphdr *uh, udp_lookup_t lookup)
+				struct udphdr *uh, struct sock *sk)
 {
 	struct sk_buff *pp = NULL;
 	struct sk_buff *p;
 	struct udphdr *uh2;
 	unsigned int off = skb_gro_offset(skb);
 	int flush = 1;
-	struct sock *sk;
 
-	rcu_read_lock();
-	sk = INDIRECT_CALL_INET(lookup, udp6_lib_lookup_skb,
-				udp4_lib_lookup_skb, skb, uh->source, uh->dest);
-	if (!sk)
-		goto out_unlock;
+	/* we can do L4 aggregation only if the packet can't land in a tunnel
+	 * otherwise we could corrupt the inner stream
+	 */
+	NAPI_GRO_CB(skb)->is_flist = 0;
+	if (!sk || !udp_sk(sk)->gro_receive) {
+		if (skb->dev->features & NETIF_F_GRO_FRAGLIST)
+			NAPI_GRO_CB(skb)->is_flist = sk ? !udp_sk(sk)->gro_enabled : 1;
 
-	if (udp_sk(sk)->gro_enabled) {
-		pp = call_gro_receive(udp_gro_receive_segment, head, skb);
-		rcu_read_unlock();
-		return pp;
+		if ((sk && udp_sk(sk)->gro_enabled) || NAPI_GRO_CB(skb)->is_flist)
+			return call_gro_receive(udp_gro_receive_segment, head, skb);
+
+		/* no GRO, be sure flush the current packet */
+		goto out;
 	}
 
 	if (NAPI_GRO_CB(skb)->encap_mark ||
-	    (skb->ip_summed != CHECKSUM_PARTIAL &&
+	    (uh->check && skb->ip_summed != CHECKSUM_PARTIAL &&
 	     NAPI_GRO_CB(skb)->csum_cnt == 0 &&
-	     !NAPI_GRO_CB(skb)->csum_valid) ||
-	    !udp_sk(sk)->gro_receive)
-		goto out_unlock;
+	     !NAPI_GRO_CB(skb)->csum_valid))
+		goto out;
 
 	/* mark that this skb passed once through the tunnel gro layer */
 	NAPI_GRO_CB(skb)->encap_mark = 1;
@@ -457,8 +558,7 @@ struct sk_buff *udp_gro_receive(struct list_head *head, struct sk_buff *skb,
 	skb_gro_postpull_rcsum(skb, uh, sizeof(struct udphdr));
 	pp = call_gro_receive_sk(udp_sk(sk)->gro_receive, sk, head, skb);
 
-out_unlock:
-	rcu_read_unlock();
+out:
 	skb_gro_flush_final(skb, pp, flush);
 	return pp;
 }
@@ -468,8 +568,10 @@ INDIRECT_CALLABLE_SCOPE
 struct sk_buff *udp4_gro_receive(struct list_head *head, struct sk_buff *skb)
 {
 	struct udphdr *uh = udp_gro_udphdr(skb);
+	struct sk_buff *pp;
+	struct sock *sk;
 
-	if (unlikely(!uh) || !static_branch_unlikely(&udp_encap_needed_key))
+	if (unlikely(!uh))
 		goto flush;
 
 	/* Don't bother verifying checksum if we're going to flush anyway. */
@@ -484,7 +586,11 @@ struct sk_buff *udp4_gro_receive(struct list_head *head, struct sk_buff *skb)
 					     inet_gro_compute_pseudo);
 skip:
 	NAPI_GRO_CB(skb)->is_ipv6 = 0;
-	return udp_gro_receive(head, skb, uh, udp4_lib_lookup_skb);
+	rcu_read_lock();
+	sk = static_branch_unlikely(&udp_encap_needed_key) ? udp4_lib_lookup_skb(skb, uh->source, uh->dest) : NULL;
+	pp = udp_gro_receive(head, skb, uh, sk);
+	rcu_read_unlock();
+	return pp;
 
 flush:
 	NAPI_GRO_CB(skb)->flush = 1;
@@ -501,6 +607,10 @@ static int udp_gro_complete_segment(struct sk_buff *skb)
 
 	skb_shinfo(skb)->gso_segs = NAPI_GRO_CB(skb)->count;
 	skb_shinfo(skb)->gso_type |= SKB_GSO_UDP_L4;
+
+	if (skb->encapsulation)
+		skb->inner_transport_header = skb->transport_header;
+
 	return 0;
 }
 
@@ -517,9 +627,7 @@ int udp_gro_complete(struct sk_buff *skb, int nhoff,
 	rcu_read_lock();
 	sk = INDIRECT_CALL_INET(lookup, udp6_lib_lookup_skb,
 				udp4_lib_lookup_skb, skb, uh->source, uh->dest);
-	if (sk && udp_sk(sk)->gro_enabled) {
-		err = udp_gro_complete_segment(skb);
-	} else if (sk && udp_sk(sk)->gro_complete) {
+	if (sk && udp_sk(sk)->gro_complete) {
 		skb_shinfo(skb)->gso_type = uh->check ? SKB_GSO_UDP_TUNNEL_CSUM
 					: SKB_GSO_UDP_TUNNEL;
 
@@ -529,6 +637,8 @@ int udp_gro_complete(struct sk_buff *skb, int nhoff,
 		skb->encapsulation = 1;
 		err = udp_sk(sk)->gro_complete(sk, skb,
 				nhoff + sizeof(struct udphdr));
+	} else {
+		err = udp_gro_complete_segment(skb);
 	}
 	rcu_read_unlock();
 
@@ -543,6 +653,23 @@ INDIRECT_CALLABLE_SCOPE int udp4_gro_complete(struct sk_buff *skb, int nhoff)
 {
 	const struct iphdr *iph = ip_hdr(skb);
 	struct udphdr *uh = (struct udphdr *)(skb->data + nhoff);
+
+	if (NAPI_GRO_CB(skb)->is_flist) {
+		uh->len = htons(skb->len - nhoff);
+
+		skb_shinfo(skb)->gso_type |= (SKB_GSO_FRAGLIST|SKB_GSO_UDP_L4);
+		skb_shinfo(skb)->gso_segs = NAPI_GRO_CB(skb)->count;
+
+		if (skb->ip_summed == CHECKSUM_UNNECESSARY) {
+			if (skb->csum_level < SKB_MAX_CSUM_LEVEL)
+				skb->csum_level++;
+		} else {
+			skb->ip_summed = CHECKSUM_UNNECESSARY;
+			skb->csum_level = 0;
+		}
+
+		return 0;
+	}
 
 	if (uh->check)
 		uh->check = ~udp_v4_check(skb->len - nhoff, iph->saddr,

@@ -229,7 +229,6 @@ void ipv6_mc_unmap(struct inet6_dev *idev);
 void ipv6_mc_remap(struct inet6_dev *idev);
 void ipv6_mc_init_dev(struct inet6_dev *idev);
 void ipv6_mc_destroy_dev(struct inet6_dev *idev);
-int ipv6_mc_check_icmpv6(struct sk_buff *skb);
 int ipv6_mc_check_mld(struct sk_buff *skb);
 void addrconf_dad_failure(struct sk_buff *skb, struct inet6_ifaddr *ifp);
 
@@ -265,6 +264,18 @@ static inline bool ipv6_is_mld(struct sk_buff *skb, int nexthdr, int offset)
 
 void addrconf_prefix_rcv(struct net_device *dev,
 			 u8 *opt, int len, bool sllao);
+
+/* Determines into what table to put autoconf PIO/RIO/default routes
+ * learned on this device.
+ *
+ * - If 0, use the same table for every device. This puts routes into
+ *   one of RT_TABLE_{PREFIX,INFO,DFLT} depending on the type of route
+ *   (but note that these three are currently all equal to
+ *   RT6_TABLE_MAIN).
+ * - If > 0, use the specified table.
+ * - If < 0, put routes into table dev->ifindex + (-rt_table).
+ */
+u32 addrconf_rt_table(const struct net_device *dev, u32 default_table);
 
 /*
  *	anycast prototypes (anycast.c)

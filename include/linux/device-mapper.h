@@ -13,10 +13,12 @@
 #include <linux/dm-ioctl.h>
 #include <linux/math64.h>
 #include <linux/ratelimit.h>
+#include <linux/android_kabi.h>
 
 struct dm_dev;
 struct dm_target;
 struct dm_table;
+struct dm_report_zones_args;
 struct mapped_device;
 struct bio_vec;
 
@@ -93,9 +95,9 @@ typedef int (*dm_message_fn) (struct dm_target *ti, unsigned argc, char **argv,
 
 typedef int (*dm_prepare_ioctl_fn) (struct dm_target *ti, struct block_device **bdev);
 
-typedef int (*dm_report_zones_fn) (struct dm_target *ti, sector_t sector,
-				   struct blk_zone *zones,
-				   unsigned int *nr_zones);
+typedef int (*dm_report_zones_fn) (struct dm_target *ti,
+				   struct dm_report_zones_args *args,
+				   unsigned int nr_zones);
 
 /*
  * These iteration functions are typically used to check (and combine)
@@ -195,6 +197,9 @@ struct target_type {
 	dm_dax_copy_iter_fn dax_copy_from_iter;
 	dm_dax_copy_iter_fn dax_copy_to_iter;
 
+	ANDROID_KABI_RESERVE(1);
+	ANDROID_KABI_RESERVE(2);
+
 	/* For internal device-mapper use. */
 	struct list_head list;
 };
@@ -247,6 +252,12 @@ struct target_type {
  */
 #define DM_TARGET_ZONED_HM		0x00000040
 #define dm_target_supports_zoned_hm(type) ((type)->features & DM_TARGET_ZONED_HM)
+
+/*
+ * A target supports passing through inline crypto support.
+ */
+#define DM_TARGET_PASSES_CRYPTO		0x00000100
+#define dm_target_passes_crypto(type) ((type)->features & DM_TARGET_PASSES_CRYPTO)
 
 struct dm_target {
 	struct dm_table *table;
@@ -316,6 +327,14 @@ struct dm_target {
 	 * whether or not its underlying devices have support.
 	 */
 	bool discards_supported:1;
+
+	/*
+	 * Set if we need to limit the number of in-flight bios when swapping.
+	 */
+	bool limit_swap_bios:1;
+
+	ANDROID_KABI_RESERVE(1);
+	ANDROID_KABI_RESERVE(2);
 };
 
 /* Each target can link one of these into the table */
@@ -423,9 +442,22 @@ int dm_suspended(struct dm_target *ti);
 int dm_post_suspending(struct dm_target *ti);
 int dm_noflush_suspending(struct dm_target *ti);
 void dm_accept_partial_bio(struct bio *bio, unsigned n_sectors);
-void dm_remap_zone_report(struct dm_target *ti, sector_t start,
-			  struct blk_zone *zones, unsigned int *nr_zones);
 union map_info *dm_get_rq_mapinfo(struct request *rq);
+
+#ifdef CONFIG_BLK_DEV_ZONED
+struct dm_report_zones_args {
+	struct dm_target *tgt;
+	sector_t next_sector;
+
+	void *orig_data;
+	report_zones_cb orig_cb;
+	unsigned int zone_idx;
+
+	/* must be filled by ->report_zones before calling dm_report_zones_cb */
+	sector_t start;
+};
+int dm_report_zones_cb(struct blk_zone *zone, unsigned int idx, void *data);
+#endif /* CONFIG_BLK_DEV_ZONED */
 
 /*
  * Device mapper functions to parse and create devices specified by the
@@ -519,6 +551,11 @@ void dm_table_run_md_queue_async(struct dm_table *t);
  */
 struct dm_table *dm_swap_table(struct mapped_device *md,
 			       struct dm_table *t);
+
+/*
+ * Table keyslot manager functions
+ */
+void dm_destroy_keyslot_manager(struct blk_keyslot_manager *ksm);
 
 /*
  * A wrapper around vmalloc.

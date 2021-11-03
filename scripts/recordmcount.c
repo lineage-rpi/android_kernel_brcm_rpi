@@ -414,7 +414,9 @@ static int is_mcounted_section_name(char const *const txtname)
 		strcmp(".irqentry.text", txtname) == 0 ||
 		strcmp(".softirqentry.text", txtname) == 0 ||
 		strcmp(".kprobes.text", txtname) == 0 ||
-		strcmp(".cpuidle.text", txtname) == 0;
+		strcmp(".cpuidle.text", txtname) == 0 ||
+		(strncmp(".text.",       txtname, 6) == 0 &&
+		 strcmp(".text..ftrace", txtname) != 0);
 }
 
 static char const *already_has_rel_mcount = "success"; /* our work here is done! */
@@ -438,7 +440,7 @@ static int arm_is_fake_mcount(Elf32_Rel const *rp)
 
 static int arm64_is_fake_mcount(Elf64_Rel const *rp)
 {
-	return ELF64_R_TYPE(w(rp->r_info)) != R_AARCH64_CALL26;
+	return ELF64_R_TYPE(w8(rp->r_info)) != R_AARCH64_CALL26;
 }
 
 /* 64-bit EM_MIPS has weird ELF64_Rela.r_info.

@@ -32,7 +32,7 @@ extern int __qcom_scm_io_writel(struct device *dev, phys_addr_t addr, unsigned i
 
 #define QCOM_SCM_SVC_INFO		0x6
 #define QCOM_IS_CALL_AVAIL_CMD		0x1
-extern int __qcom_scm_is_call_available(struct device *dev, u32 svc_id,
+extern bool __qcom_scm_is_call_available(struct device *dev, u32 svc_id,
 		u32 cmd_id);
 
 #define QCOM_SCM_SVC_HDCP		0x11
@@ -57,6 +57,15 @@ extern int  __qcom_scm_pas_mem_setup(struct device *dev, u32 peripheral,
 extern int  __qcom_scm_pas_auth_and_reset(struct device *dev, u32 peripheral);
 extern int  __qcom_scm_pas_shutdown(struct device *dev, u32 peripheral);
 extern int  __qcom_scm_pas_mss_reset(struct device *dev, bool reset);
+
+#define QCOM_SCM_SVC_ES			0x10	/* Enterprise Security */
+#define QCOM_SCM_ES_INVALIDATE_ICE_KEY	0x03
+#define QCOM_SCM_ES_CONFIG_SET_ICE_KEY	0x04
+extern int __qcom_scm_ice_invalidate_key(struct device *dev, u32 index);
+extern int __qcom_scm_ice_set_key(struct device *dev, u32 index,
+				  dma_addr_t key_phys,
+				  u32 key_size, enum qcom_scm_ice_cipher cipher,
+				  u32 data_unit_size);
 
 /* common error codes */
 #define QCOM_SCM_V2_EBUSY	-12
@@ -91,10 +100,15 @@ extern int __qcom_scm_restore_sec_cfg(struct device *dev, u32 device_id,
 				      u32 spare);
 #define QCOM_SCM_IOMMU_SECURE_PTBL_SIZE	3
 #define QCOM_SCM_IOMMU_SECURE_PTBL_INIT	4
+#define QCOM_SCM_SVC_SMMU_PROGRAM	0x15
+#define QCOM_SCM_CONFIG_ERRATA1		0x3
+#define QCOM_SCM_CONFIG_ERRATA1_CLIENT_ALL	0x2
 extern int __qcom_scm_iommu_secure_ptbl_size(struct device *dev, u32 spare,
 					     size_t *size);
 extern int __qcom_scm_iommu_secure_ptbl_init(struct device *dev, u64 addr,
 					     u32 size, u32 spare);
+extern int __qcom_scm_qsmmu500_wait_safe_toggle(struct device *dev,
+						bool enable);
 #define QCOM_MEM_PROT_ASSIGN_ID	0x16
 extern int  __qcom_scm_assign_mem(struct device *dev,
 				  phys_addr_t mem_region, size_t mem_sz,

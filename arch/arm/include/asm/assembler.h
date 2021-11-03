@@ -269,10 +269,9 @@
 	.endif							;\
 	.popsection
 #define ALT_UP_B(label)					\
-	.equ	up_b_offset, label - 9998b			;\
 	.pushsection ".alt.smp.init", "a"			;\
 	.long	9998b						;\
-	W(b)	. + up_b_offset					;\
+	W(b)	. + (label - 9998b)					;\
 	.popsection
 #else
 #define ALT_SMP(instr...)
@@ -494,5 +493,22 @@ THUMB(	orr	\reg , \reg , #PSR_T_BIT	)
 #else
 #define _ASM_NOKPROBE(entry)
 #endif
+
+	/*
+	 * rev_l - byte-swap a 32-bit value
+	 *
+	 * @val: source/destination register
+	 * @tmp: scratch register
+	 */
+	.macro		rev_l, val:req, tmp:req
+	.if		__LINUX_ARM_ARCH__ < 6
+	eor		\tmp, \val, \val, ror #16
+	bic		\tmp, \tmp, #0x00ff0000
+	mov		\val, \val, ror #8
+	eor		\val, \val, \tmp, lsr #8
+	.else
+	rev		\val, \val
+	.endif
+	.endm
 
 #endif /* __ASM_ASSEMBLER_H__ */

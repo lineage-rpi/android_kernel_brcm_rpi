@@ -405,10 +405,22 @@ void rproc_free_vring(struct rproc_vring *rvring)
 
 	idr_remove(&rproc->notifyids, rvring->notifyid);
 
-	/* reset resource entry info */
-	rsc = (void *)rproc->table_ptr + rvring->rvdev->rsc_offset;
-	rsc->vring[idx].da = 0;
-	rsc->vring[idx].notifyid = -1;
+	/*
+	 * At this point rproc_stop() has been called and the installed resource
+	 * table in the remote processor memory may no longer be accessible. As
+	 * such and as per rproc_stop(), rproc->table_ptr points to the cached
+	 * resource table (rproc->cached_table).  The cached resource table is
+	 * only available when a remote processor has been booted by the
+	 * remoteproc core, otherwise it is NULL.
+	 *
+	 * Based on the above, reset the virtio device section in the cached
+	 * resource table only if there is one to work with.
+	 */
+	if (rproc->table_ptr) {
+		rsc = (void *)rproc->table_ptr + rvring->rvdev->rsc_offset;
+		rsc->vring[idx].da = 0;
+		rsc->vring[idx].notifyid = -1;
+	}
 }
 
 static int rproc_vdev_do_start(struct rproc_subdev *subdev)
@@ -445,7 +457,7 @@ static void rproc_rvdev_release(struct device *dev)
 /**
  * rproc_handle_vdev() - handle a vdev fw resource
  * @rproc: the remote processor
- * @rsc: the vring resource descriptor
+ * ptr: the vring resource descriptor
  * @avail: size of available data (for sanity checking the image)
  *
  * This resource entry requests the host to statically register a virtio
@@ -469,9 +481,10 @@ static void rproc_rvdev_release(struct device *dev)
  *
  * Returns 0 on success, or an appropriate error code otherwise
  */
-static int rproc_handle_vdev(struct rproc *rproc, struct fw_rsc_vdev *rsc,
+static int rproc_handle_vdev(struct rproc *rproc, void *ptr,
 			     int offset, int avail)
 {
+	struct fw_rsc_vdev *rsc = ptr;
 	struct device *dev = &rproc->dev;
 	struct rproc_vdev *rvdev;
 	int i, ret;
@@ -587,7 +600,7 @@ void rproc_vdev_release(struct kref *ref)
 /**
  * rproc_handle_trace() - handle a shared trace buffer resource
  * @rproc: the remote processor
- * @rsc: the trace resource descriptor
+ * @ptr: the trace resource descriptor
  * @avail: size of available data (for sanity checking the image)
  *
  * In case the remote processor dumps trace logs into memory,
@@ -600,9 +613,10 @@ void rproc_vdev_release(struct kref *ref)
  *
  * Returns 0 on success, or an appropriate error code otherwise
  */
-static int rproc_handle_trace(struct rproc *rproc, struct fw_rsc_trace *rsc,
+static int rproc_handle_trace(struct rproc *rproc, void *ptr,
 			      int offset, int avail)
 {
+	struct fw_rsc_trace *rsc = ptr;
 	struct rproc_debug_trace *trace;
 	struct device *dev = &rproc->dev;
 	char name[15];
@@ -652,7 +666,7 @@ static int rproc_handle_trace(struct rproc *rproc, struct fw_rsc_trace *rsc,
 /**
  * rproc_handle_devmem() - handle devmem resource entry
  * @rproc: remote processor handle
- * @rsc: the devmem resource entry
+ * @ptr: the devmem resource entry
  * @avail: size of available data (for sanity checking the image)
  *
  * Remote processors commonly need to access certain on-chip peripherals.
@@ -674,9 +688,10 @@ static int rproc_handle_trace(struct rproc *rproc, struct fw_rsc_trace *rsc,
  * and not allow firmwares to request access to physical addresses that
  * are outside those ranges.
  */
-static int rproc_handle_devmem(struct rproc *rproc, struct fw_rsc_devmem *rsc,
+static int rproc_handle_devmem(struct rproc *rproc, void *ptr,
 			       int offset, int avail)
 {
+	struct fw_rsc_devmem *rsc = ptr;
 	struct rproc_mem_entry *mapping;
 	struct device *dev = &rproc->dev;
 	int ret;
@@ -853,7 +868,7 @@ static int rproc_release_carveout(struct rproc *rproc,
 /**
  * rproc_handle_carveout() - handle phys contig memory allocation requests
  * @rproc: rproc handle
- * @rsc: the resource entry
+ * @ptr: the resource entry
  * @avail: size of available data (for image validation)
  *
  * This function will handle firmware requests for allocation of physically
@@ -869,9 +884,9 @@ static int rproc_release_carveout(struct rproc *rproc,
  * pressure is important; it may have a substantial impact on performance.
  */
 static int rproc_handle_carveout(struct rproc *rproc,
-				 struct fw_rsc_carveout *rsc,
-				 int offset, int avail)
+				 void *ptr, int offset, int avail)
 {
+	struct fw_rsc_carveout *rsc = ptr;
 	struct rproc_mem_entry *carveout;
 	struct device *dev = &rproc->dev;
 
@@ -1028,10 +1043,10 @@ EXPORT_SYMBOL(rproc_of_resm_mem_entry_init);
  * enum fw_resource_type.
  */
 static rproc_handle_resource_t rproc_loading_handlers[RSC_LAST] = {
-	[RSC_CARVEOUT] = (rproc_handle_resource_t)rproc_handle_carveout,
-	[RSC_DEVMEM] = (rproc_handle_resource_t)rproc_handle_devmem,
-	[RSC_TRACE] = (rproc_handle_resource_t)rproc_handle_trace,
-	[RSC_VDEV] = (rproc_handle_resource_t)rproc_handle_vdev,
+	[RSC_CARVEOUT] = rproc_handle_carveout,
+	[RSC_DEVMEM] = rproc_handle_devmem,
+	[RSC_TRACE] = rproc_handle_trace,
+	[RSC_VDEV] = rproc_handle_vdev,
 };
 
 /* handle firmware resource entries before booting the remote processor */
@@ -1359,6 +1374,48 @@ reset_table_ptr:
 	return ret;
 }
 
+static int rproc_attach(struct rproc *rproc)
+{
+	struct device *dev = &rproc->dev;
+	int ret;
+
+	ret = rproc_prepare_subdevices(rproc);
+	if (ret) {
+		dev_err(dev, "failed to prepare subdevices for %s: %d\n",
+			rproc->name, ret);
+		goto out;
+	}
+
+	/* Attach to the remote processor */
+	ret = rproc_attach_device(rproc);
+	if (ret) {
+		dev_err(dev, "can't attach to rproc %s: %d\n",
+			rproc->name, ret);
+		goto unprepare_subdevices;
+	}
+
+	/* Start any subdevices for the remote processor */
+	ret = rproc_start_subdevices(rproc);
+	if (ret) {
+		dev_err(dev, "failed to probe subdevices for %s: %d\n",
+			rproc->name, ret);
+		goto stop_rproc;
+	}
+
+	rproc->state = RPROC_RUNNING;
+
+	dev_info(dev, "remote processor %s is now attached\n", rproc->name);
+
+	return 0;
+
+stop_rproc:
+	rproc->ops->stop(rproc);
+unprepare_subdevices:
+	rproc_unprepare_subdevices(rproc);
+out:
+	return ret;
+}
+
 /*
  * take a firmware and boot a remote processor with it.
  */
@@ -1429,6 +1486,63 @@ disable_iommu:
 }
 
 /*
+ * Attach to remote processor - similar to rproc_fw_boot() but without
+ * the steps that deal with the firmware image.
+ */
+static int rproc_actuate(struct rproc *rproc)
+{
+	struct device *dev = &rproc->dev;
+	int ret;
+
+	/*
+	 * if enabling an IOMMU isn't relevant for this rproc, this is
+	 * just a nop
+	 */
+	ret = rproc_enable_iommu(rproc);
+	if (ret) {
+		dev_err(dev, "can't enable iommu: %d\n", ret);
+		return ret;
+	}
+
+	/* reset max_notifyid */
+	rproc->max_notifyid = -1;
+
+	/* reset handled vdev */
+	rproc->nb_vdev = 0;
+
+	/*
+	 * Handle firmware resources required to attach to a remote processor.
+	 * Because we are attaching rather than booting the remote processor,
+	 * we expect the platform driver to properly set rproc->table_ptr.
+	 */
+	ret = rproc_handle_resources(rproc, rproc_loading_handlers);
+	if (ret) {
+		dev_err(dev, "Failed to process resources: %d\n", ret);
+		goto disable_iommu;
+	}
+
+	/* Allocate carveout resources associated to rproc */
+	ret = rproc_alloc_registered_carveouts(rproc);
+	if (ret) {
+		dev_err(dev, "Failed to allocate associated carveouts: %d\n",
+			ret);
+		goto clean_up_resources;
+	}
+
+	ret = rproc_attach(rproc);
+	if (ret)
+		goto clean_up_resources;
+
+	return 0;
+
+clean_up_resources:
+	rproc_resource_cleanup(rproc);
+disable_iommu:
+	rproc_disable_iommu(rproc);
+	return ret;
+}
+
+/*
  * take a firmware and boot it up.
  *
  * Note: this function is called asynchronously upon registration of the
@@ -1448,6 +1562,15 @@ static void rproc_auto_boot_callback(const struct firmware *fw, void *context)
 static int rproc_trigger_auto_boot(struct rproc *rproc)
 {
 	int ret;
+
+	/*
+	 * Since the remote processor is in a detached state, it has already
+	 * been booted by another entity.  As such there is no point in waiting
+	 * for a firmware image to be loaded, we can simply initiate the process
+	 * of attaching to it immediately.
+	 */
+	if (rproc->state == RPROC_DETACHED)
+		return rproc_boot(rproc);
 
 	/*
 	 * We're initiating an asynchronous firmware loading, so we can
@@ -1483,6 +1606,14 @@ static int rproc_stop(struct rproc *rproc, bool crashed)
 	rproc_unprepare_subdevices(rproc);
 
 	rproc->state = RPROC_OFFLINE;
+
+	/*
+	 * The remote processor has been stopped and is now offline, which means
+	 * that the next time it is brought back online the remoteproc core will
+	 * be responsible to load its firmware.  As such it is no longer
+	 * autonomous.
+	 */
+	rproc->autonomous = false;
 
 	dev_info(dev, "stopped remote processor %s\n", rproc->name);
 
@@ -1751,24 +1882,30 @@ int rproc_boot(struct rproc *rproc)
 		goto unlock_mutex;
 	}
 
-	/* skip the boot process if rproc is already powered up */
+	/* skip the boot or attach process if rproc is already powered up */
 	if (atomic_inc_return(&rproc->power) > 1) {
 		ret = 0;
 		goto unlock_mutex;
 	}
 
-	dev_info(dev, "powering up %s\n", rproc->name);
+	if (rproc->state == RPROC_DETACHED) {
+		dev_info(dev, "attaching to %s\n", rproc->name);
 
-	/* load firmware */
-	ret = request_firmware(&firmware_p, rproc->firmware, dev);
-	if (ret < 0) {
-		dev_err(dev, "request_firmware failed: %d\n", ret);
-		goto downref_rproc;
+		ret = rproc_actuate(rproc);
+	} else {
+		dev_info(dev, "powering up %s\n", rproc->name);
+
+		/* load firmware */
+		ret = request_firmware(&firmware_p, rproc->firmware, dev);
+		if (ret < 0) {
+			dev_err(dev, "request_firmware failed: %d\n", ret);
+			goto downref_rproc;
+		}
+
+		ret = rproc_fw_boot(rproc, firmware_p);
+
+		release_firmware(firmware_p);
 	}
-
-	ret = rproc_fw_boot(rproc, firmware_p);
-
-	release_firmware(firmware_p);
 
 downref_rproc:
 	if (ret)
@@ -1883,6 +2020,43 @@ struct rproc *rproc_get_by_phandle(phandle phandle)
 #endif
 EXPORT_SYMBOL(rproc_get_by_phandle);
 
+static int rproc_validate(struct rproc *rproc)
+{
+	switch (rproc->state) {
+	case RPROC_OFFLINE:
+		/*
+		 * An offline processor without a start()
+		 * function makes no sense.
+		 */
+		if (!rproc->ops->start)
+			return -EINVAL;
+		break;
+	case RPROC_DETACHED:
+		/*
+		 * A remote processor in a detached state without an
+		 * attach() function makes not sense.
+		 */
+		if (!rproc->ops->attach)
+			return -EINVAL;
+		/*
+		 * When attaching to a remote processor the device memory
+		 * is already available and as such there is no need to have a
+		 * cached table.
+		 */
+		if (rproc->cached_table)
+			return -EINVAL;
+		break;
+	default:
+		/*
+		 * When adding a remote processor, the state of the device
+		 * can be offline or detached, nothing else.
+		 */
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 /**
  * rproc_add() - register a remote processor
  * @rproc: the remote processor handle to register
@@ -1912,10 +2086,24 @@ int rproc_add(struct rproc *rproc)
 	if (ret < 0)
 		return ret;
 
+	ret = rproc_validate(rproc);
+	if (ret < 0)
+		return ret;
+
 	dev_info(dev, "%s is available\n", rproc->name);
 
 	/* create debugfs entries */
 	rproc_create_debug_dir(rproc);
+
+	/*
+	 * Remind ourselves the remote processor has been attached to rather
+	 * than booted by the remoteproc core.  This is important because the
+	 * RPROC_DETACHED state will be lost as soon as the remote processor
+	 * has been attached to.  Used in firmware_show() and reset in
+	 * rproc_stop().
+	 */
+	if (rproc->state == RPROC_DETACHED)
+		rproc->autonomous = true;
 
 	/* if rproc is marked always-on, request it to boot */
 	if (rproc->auto_boot) {

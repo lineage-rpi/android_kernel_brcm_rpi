@@ -68,6 +68,11 @@ struct ctl_table_header;
 /* unused opcode to mark call to interpreter with arguments */
 #define BPF_CALL_ARGS	0xe0
 
+/* unused opcode to mark speculation barrier for mitigating
+ * Speculative Store Bypass
+ */
+#define BPF_NOSPEC	0xc0
+
 /* As per nm, we expose JITed images as text (code) section for
  * kallsyms. That way, tools like perf can find it to match
  * addresses.
@@ -368,6 +373,16 @@ static inline bool insn_is_zext(const struct bpf_insn *insn)
 		.off   = 0,					\
 		.imm   = 0 })
 
+/* Speculation barrier */
+
+#define BPF_ST_NOSPEC()						\
+	((struct bpf_insn) {					\
+		.code  = BPF_ST | BPF_NOSPEC,			\
+		.dst_reg = 0,					\
+		.src_reg = 0,					\
+		.off   = 0,					\
+		.imm   = 0 })
+
 /* Internal classic blocks for direct assignment */
 
 #define __BPF_STMT(CODE, K)					\
@@ -511,7 +526,12 @@ struct sock_fprog_kern {
 	struct sock_filter	*filter;
 };
 
+#define BPF_BINARY_HEADER_MAGIC	0x05de0e82
+
 struct bpf_binary_header {
+#ifdef CONFIG_CFI_CLANG
+	u32 magic;
+#endif
 	u32 pages;
 	/* Some arches need word alignment for their instructions */
 	u8 image[] __aligned(4);
@@ -553,20 +573,75 @@ struct sk_filter {
 
 DECLARE_STATIC_KEY_FALSE(bpf_stats_enabled_key);
 
+#if IS_ENABLED(CONFIG_BPF_JIT) && IS_ENABLED(CONFIG_CFI_CLANG)
+/*
+ * With JIT, the kernel makes an indirect call to dynamically generated
+ * code. Use bpf_call_func to perform additional validation of the call
+ * target to narrow down attack surface. Architectures implementing BPF
+ * JIT can override arch_bpf_jit_check_func for arch-specific checking.
+ */
+extern bool arch_bpf_jit_check_func(const struct bpf_prog *prog);
+
+static inline unsigned int __bpf_call_func(const struct bpf_prog *prog,
+					   const void *ctx)
+{
+	/* Call interpreter with CFI checking. */
+	return prog->bpf_func(ctx, prog->insnsi);
+}
+
+static inline struct bpf_binary_header *
+bpf_jit_binary_hdr(const struct bpf_prog *fp);
+
+static inline unsigned int __nocfi bpf_call_func(const struct bpf_prog *prog,
+						 const void *ctx)
+{
+	const struct bpf_binary_header *hdr = bpf_jit_binary_hdr(prog);
+
+	if (!IS_ENABLED(CONFIG_BPF_JIT_ALWAYS_ON) && !prog->jited)
+		return __bpf_call_func(prog, ctx);
+
+	/*
+	 * We are about to call dynamically generated code. Check that the
+	 * page has bpf_binary_header with a valid magic to limit possible
+	 * call targets.
+	 */
+	BUG_ON(hdr->magic != BPF_BINARY_HEADER_MAGIC ||
+		!arch_bpf_jit_check_func(prog));
+
+	/* Call jited function without CFI checking. */
+	return prog->bpf_func(ctx, prog->insnsi);
+}
+
+static inline void bpf_jit_set_header_magic(struct bpf_binary_header *hdr)
+{
+	hdr->magic = BPF_BINARY_HEADER_MAGIC;
+}
+#else
+static inline unsigned int bpf_call_func(const struct bpf_prog *prog,
+					 const void *ctx)
+{
+	return prog->bpf_func(ctx, prog->insnsi);
+}
+
+static inline void bpf_jit_set_header_magic(struct bpf_binary_header *hdr)
+{
+}
+#endif
+
 #define BPF_PROG_RUN(prog, ctx)	({				\
 	u32 ret;						\
 	cant_sleep();						\
 	if (static_branch_unlikely(&bpf_stats_enabled_key)) {	\
 		struct bpf_prog_stats *stats;			\
 		u64 start = sched_clock();			\
-		ret = (*(prog)->bpf_func)(ctx, (prog)->insnsi);	\
+		ret = bpf_call_func(prog, ctx);			\
 		stats = this_cpu_ptr(prog->aux->stats);		\
 		u64_stats_update_begin(&stats->syncp);		\
 		stats->cnt++;					\
 		stats->nsecs += sched_clock() - start;		\
 		u64_stats_update_end(&stats->syncp);		\
 	} else {						\
-		ret = (*(prog)->bpf_func)(ctx, (prog)->insnsi);	\
+		ret = bpf_call_func(prog, ctx);			\
 	}							\
 	ret; })
 
@@ -846,7 +921,7 @@ void sk_filter_uncharge(struct sock *sk, struct sk_filter *fp);
 u64 __bpf_call_base(u64 r1, u64 r2, u64 r3, u64 r4, u64 r5);
 #define __bpf_call_base_args \
 	((u64 (*)(u64, u64, u64, u64, u64, const struct bpf_insn *)) \
-	 __bpf_call_base)
+	 (void *)__bpf_call_base)
 
 struct bpf_prog *bpf_int_jit_compile(struct bpf_prog *prog);
 void bpf_jit_compile(struct bpf_prog *prog);

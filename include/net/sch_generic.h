@@ -16,6 +16,7 @@
 #include <linux/rwsem.h>
 #include <linux/atomic.h>
 #include <linux/hashtable.h>
+#include <linux/android_kabi.h>
 #include <net/gen_stats.h>
 #include <net/rtnetlink.h>
 #include <net/flow_offload.h>
@@ -36,6 +37,7 @@ struct qdisc_rate_table {
 enum qdisc_state_t {
 	__QDISC_STATE_SCHED,
 	__QDISC_STATE_DEACTIVATED,
+	__QDISC_STATE_MISSED,
 };
 
 struct qdisc_size_table {
@@ -112,6 +114,8 @@ struct Qdisc {
 	/* for NOLOCK qdisc, true if there are no enqueued skbs */
 	bool			empty;
 	struct rcu_head		rcu;
+
+	ANDROID_KABI_RESERVE(1);
 };
 
 static inline void qdisc_refcount_inc(struct Qdisc *qdisc)
@@ -156,8 +160,45 @@ static inline bool qdisc_is_empty(const struct Qdisc *qdisc)
 static inline bool qdisc_run_begin(struct Qdisc *qdisc)
 {
 	if (qdisc->flags & TCQ_F_NOLOCK) {
+		if (spin_trylock(&qdisc->seqlock))
+			goto nolock_empty;
+
+		/* Paired with smp_mb__after_atomic() to make sure
+		 * STATE_MISSED checking is synchronized with clearing
+		 * in pfifo_fast_dequeue().
+		 */
+		smp_mb__before_atomic();
+
+		/* If the MISSED flag is set, it means other thread has
+		 * set the MISSED flag before second spin_trylock(), so
+		 * we can return false here to avoid multi cpus doing
+		 * the set_bit() and second spin_trylock() concurrently.
+		 */
+		if (test_bit(__QDISC_STATE_MISSED, &qdisc->state))
+			return false;
+
+		/* Set the MISSED flag before the second spin_trylock(),
+		 * if the second spin_trylock() return false, it means
+		 * other cpu holding the lock will do dequeuing for us
+		 * or it will see the MISSED flag set after releasing
+		 * lock and reschedule the net_tx_action() to do the
+		 * dequeuing.
+		 */
+		set_bit(__QDISC_STATE_MISSED, &qdisc->state);
+
+		/* spin_trylock() only has load-acquire semantic, so use
+		 * smp_mb__after_atomic() to ensure STATE_MISSED is set
+		 * before doing the second spin_trylock().
+		 */
+		smp_mb__after_atomic();
+
+		/* Retry again in case other CPU may not see the new flag
+		 * after it releases the lock at the end of qdisc_run_end().
+		 */
 		if (!spin_trylock(&qdisc->seqlock))
 			return false;
+
+nolock_empty:
 		WRITE_ONCE(qdisc->empty, false);
 	} else if (qdisc_is_running(qdisc)) {
 		return false;
@@ -173,8 +214,15 @@ static inline bool qdisc_run_begin(struct Qdisc *qdisc)
 static inline void qdisc_run_end(struct Qdisc *qdisc)
 {
 	write_seqcount_end(&qdisc->running);
-	if (qdisc->flags & TCQ_F_NOLOCK)
+	if (qdisc->flags & TCQ_F_NOLOCK) {
 		spin_unlock(&qdisc->seqlock);
+
+		if (unlikely(test_bit(__QDISC_STATE_MISSED,
+				      &qdisc->state))) {
+			clear_bit(__QDISC_STATE_MISSED, &qdisc->state);
+			__netif_schedule(qdisc);
+		}
+	}
 }
 
 static inline bool qdisc_may_bulk(const struct Qdisc *qdisc)
@@ -223,6 +271,8 @@ struct Qdisc_class_ops {
 					struct sk_buff *skb, struct tcmsg*);
 	int			(*dump_stats)(struct Qdisc *, unsigned long,
 					struct gnet_dump *);
+
+	ANDROID_KABI_RESERVE(1);
 };
 
 /* Qdisc_class_ops flag values */
@@ -266,6 +316,8 @@ struct Qdisc_ops {
 	u32			(*egress_block_get)(struct Qdisc *sch);
 
 	struct module		*owner;
+
+	ANDROID_KABI_RESERVE(1);
 };
 
 
@@ -1158,7 +1210,7 @@ static inline struct Qdisc *qdisc_replace(struct Qdisc *sch, struct Qdisc *new,
 	old = *pold;
 	*pold = new;
 	if (old != NULL)
-		qdisc_tree_flush_backlog(old);
+		qdisc_purge_queue(old);
 	sch_tree_unlock(sch);
 
 	return old;
