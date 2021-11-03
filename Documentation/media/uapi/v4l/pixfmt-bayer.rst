@@ -34,6 +34,5 @@ orders. See also `the Wikipedia article on Bayer filter
     pixfmt-srggb10-ipu3
     pixfmt-srggb12
     pixfmt-srggb12p
-    pixfmt-srggb14
     pixfmt-srggb14p
     pixfmt-srggb16
