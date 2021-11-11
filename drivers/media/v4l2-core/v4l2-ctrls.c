@@ -275,7 +275,6 @@ const char * const *v4l2_ctrl_get_menu(u32 id)
 		"Flash",
 		"Cloudy",
 		"Shade",
-		"Greyworld",
 		NULL,
 	};
 	static const char * const camera_iso_sensitivity_auto[] = {
