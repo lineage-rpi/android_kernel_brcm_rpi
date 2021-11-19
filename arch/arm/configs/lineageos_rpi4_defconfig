@@ -1423,7 +1423,7 @@ CONFIG_PREVENT_FIRMWARE_BUILD=y
 # Firmware loader
 #
 CONFIG_FW_LOADER=y
-CONFIG_EXTRA_FIRMWARE="regulatory.db regulatory.db.p7s brcm/brcmfmac43455-sdio.bin brcm/brcmfmac43455-sdio.clm_blob brcm/brcmfmac43455-sdio.txt brcm/brcmfmac43456-sdio.bin brcm/brcmfmac43456-sdio.clm_blob brcm/brcmfmac43456-sdio.txt"
+CONFIG_EXTRA_FIRMWARE="regulatory.db regulatory.db.p7s brcm/brcmfmac43455-sdio.bin brcm/brcmfmac43455-sdio.clm_blob brcm/brcmfmac43455-sdio.raspberrypi,4-model-b.txt brcm/brcmfmac43456-sdio.bin brcm/brcmfmac43456-sdio.clm_blob brcm/brcmfmac43456-sdio.raspberrypi,4-compute-module.txt brcm/brcmfmac43456-sdio.raspberrypi,400.txt"
 CONFIG_EXTRA_FIRMWARE_DIR="../../../vendor/brcm/rpi4/proprietary/vendor/firmware"
 # CONFIG_FW_LOADER_USER_HELPER is not set
 # CONFIG_FW_LOADER_COMPRESS is not set
