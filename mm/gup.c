@@ -18,6 +18,8 @@
 #include <linux/mm_inline.h>
 #include <linux/sched/mm.h>
 
+#include <linux/page_pinner.h>
+
 #include <asm/mmu_context.h>
 #include <asm/tlbflush.h>
 
@@ -114,9 +116,12 @@ static __maybe_unused struct page *try_grab_compound_head(struct page *page,
 							  int refs,
 							  unsigned int flags)
 {
-	if (flags & FOLL_GET)
-		return try_get_compound_head(page, refs);
-	else if (flags & FOLL_PIN) {
+	if (flags & FOLL_GET) {
+		struct page *head = try_get_compound_head(page, refs);
+		if (head)
+			set_page_pinner(head, compound_order(head));
+		return head;
+	} else if (flags & FOLL_PIN) {
 		int orig_refs = refs;
 
 		/*
@@ -170,6 +175,8 @@ static void put_compound_head(struct page *page, int refs, unsigned int flags)
 			refs *= GUP_PIN_COUNTING_BIAS;
 	}
 
+	if (flags & FOLL_GET)
+		reset_page_pinner(page, compound_order(page));
 	put_page_refs(page, refs);
 }
 
@@ -198,9 +205,15 @@ bool __must_check try_grab_page(struct page *page, unsigned int flags)
 {
 	WARN_ON_ONCE((flags & (FOLL_GET | FOLL_PIN)) == (FOLL_GET | FOLL_PIN));
 
-	if (flags & FOLL_GET)
-		return try_get_page(page);
-	else if (flags & FOLL_PIN) {
+	if (flags & FOLL_GET) {
+		bool ret = try_get_page(page);
+
+		if (ret) {
+			page = compound_head(page);
+			set_page_pinner(page, compound_order(page));
+		}
+		return ret;
+	} else if (flags & FOLL_PIN) {
 		int refs = 1;
 
 		page = compound_head(page);
@@ -241,6 +254,24 @@ void unpin_user_page(struct page *page)
 	put_compound_head(compound_head(page), 1, FOLL_PIN);
 }
 EXPORT_SYMBOL(unpin_user_page);
+
+/*
+ * put_user_page() - release a page obtained using get_user_pages() or
+ *                   follow_page(FOLL_GET)
+ * @page:            pointer to page to be released
+ *
+ * Pages that were obtained via get_user_pages()/follow_page(FOLL_GET) must be
+ * released via put_user_page.
+ * note: If it's not a page from GUP or follow_page(FOLL_GET), it's harmless.
+ */
+void put_user_page(struct page *page)
+{
+	struct page *head = compound_head(page);
+
+	reset_page_pinner(head, compound_order(head));
+	put_page(page);
+}
+EXPORT_SYMBOL(put_user_page);
 
 /**
  * unpin_user_pages_dirty_lock() - release and optionally dirty gup-pinned pages

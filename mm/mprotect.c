@@ -35,6 +35,51 @@
 
 #include "internal.h"
 
+/* Determine whether we can avoid taking write faults for known dirty pages. */
+static bool may_avoid_write_fault(pte_t pte, struct vm_area_struct *vma,
+				  unsigned long cp_flags)
+{
+	/*
+	 * The dirty accountable bit indicates that we can always make the page
+	 * writable regardless of the number of references.
+	 */
+	if (!(cp_flags & MM_CP_DIRTY_ACCT)) {
+		/* Otherwise, we must have exclusive access to the page. */
+		if (!(vma_is_anonymous(vma) && (vma->vm_flags & VM_WRITE)))
+			return false;
+
+		if (page_count(pte_page(pte)) != 1)
+			return false;
+	}
+
+	/*
+	 * Don't do this optimization for clean pages as we need to be notified
+	 * of the transition from clean to dirty.
+	 */
+	if (!pte_dirty(pte))
+		return false;
+
+	/* Same for softdirty. */
+	if (!pte_soft_dirty(pte) && (vma->vm_flags & VM_SOFTDIRTY))
+		return false;
+
+	/*
+	 * For userfaultfd the user program needs to monitor write faults so we
+	 * can't do this optimization.
+	 */
+	if (pte_uffd_wp(pte))
+		return false;
+
+	/*
+	 * It is unclear whether this optimization can be done safely for NUMA
+	 * pages.
+	 */
+	if (cp_flags & MM_CP_PROT_NUMA)
+		return false;
+
+	return true;
+}
+
 static unsigned long change_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
 		unsigned long addr, unsigned long end, pgprot_t newprot,
 		unsigned long cp_flags)
@@ -43,7 +88,6 @@ static unsigned long change_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
 	spinlock_t *ptl;
 	unsigned long pages = 0;
 	int target_node = NUMA_NO_NODE;
-	bool dirty_accountable = cp_flags & MM_CP_DIRTY_ACCT;
 	bool prot_numa = cp_flags & MM_CP_PROT_NUMA;
 	bool uffd_wp = cp_flags & MM_CP_UFFD_WP;
 	bool uffd_wp_resolve = cp_flags & MM_CP_UFFD_WP_RESOLVE;
@@ -131,12 +175,8 @@ static unsigned long change_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
 				ptent = pte_clear_uffd_wp(ptent);
 			}
 
-			/* Avoid taking write faults for known dirty pages */
-			if (dirty_accountable && pte_dirty(ptent) &&
-					(pte_soft_dirty(ptent) ||
-					 !(vma->vm_flags & VM_SOFTDIRTY))) {
+			if (may_avoid_write_fault(ptent, vma, cp_flags))
 				ptent = pte_mkwrite(ptent);
-			}
 			ptep_modify_prot_commit(vma, addr, pte, oldpte, ptent);
 			pages++;
 		} else if (is_swap_pte(oldpte)) {
@@ -454,7 +494,7 @@ mprotect_fixup(struct vm_area_struct *vma, struct vm_area_struct **pprev,
 	pgoff = vma->vm_pgoff + ((start - vma->vm_start) >> PAGE_SHIFT);
 	*pprev = vma_merge(mm, *pprev, start, end, newflags,
 			   vma->anon_vma, vma->vm_file, pgoff, vma_policy(vma),
-			   vma->vm_userfaultfd_ctx);
+			   vma->vm_userfaultfd_ctx, vma_get_anon_name(vma));
 	if (*pprev) {
 		vma = *pprev;
 		VM_WARN_ON((vma->vm_flags ^ newflags) & ~VM_SOFTDIRTY);
@@ -480,12 +520,14 @@ success:
 	 * vm_flags and vm_page_prot are protected by the mmap_lock
 	 * held in write mode.
 	 */
-	vma->vm_flags = newflags;
+	vm_write_begin(vma);
+	WRITE_ONCE(vma->vm_flags, newflags);
 	dirty_accountable = vma_wants_writenotify(vma, vma->vm_page_prot);
 	vma_set_page_prot(vma);
 
 	change_protection(vma, start, end, vma->vm_page_prot,
 			  dirty_accountable ? MM_CP_DIRTY_ACCT : 0);
+	vm_write_end(vma);
 
 	/*
 	 * Private VM_LOCKED VMA becoming writable: trigger COW to avoid major
