@@ -1,6 +1,6 @@
 #
 # Automatically generated file; DO NOT EDIT.
-# Linux/arm64 5.10.89 Kernel Configuration
+# Linux/arm64 5.10.90 Kernel Configuration
 #
 CONFIG_CC_VERSION_TEXT="real-aarch64-linux-android-gcc (GCC) 4.9.x 20150123 (prerelease)"
 CONFIG_CC_IS_GCC=y
@@ -216,6 +216,7 @@ CONFIG_BPF_SYSCALL=y
 CONFIG_ARCH_WANT_DEFAULT_BPF_JIT=y
 CONFIG_BPF_JIT_ALWAYS_ON=y
 CONFIG_BPF_JIT_DEFAULT_ON=y
+# CONFIG_BPF_UNPRIV_DEFAULT_OFF is not set
 # CONFIG_BPF_PRELOAD is not set
 # CONFIG_USERFAULTFD is not set
 CONFIG_ARCH_HAS_MEMBARRIER_SYNC_CORE=y
