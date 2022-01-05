@@ -245,7 +245,6 @@ vc4_hdmi_connector_detect(struct drm_connector *connector, bool force)
 			connected = true;
 	}
 
-	vc4_hdmi->encoder.hdmi_monitor = false;
 	if (connected) {
 		if (connector->status != connector_status_connected) {
 			struct edid *edid = drm_get_edid(connector, vc4_hdmi->ddc);
@@ -254,6 +253,8 @@ vc4_hdmi_connector_detect(struct drm_connector *connector, bool force)
 				cec_s_phys_addr_from_edid(vc4_hdmi->cec_adap, edid);
 				vc4_hdmi->encoder.hdmi_monitor = drm_detect_hdmi_monitor(edid);
 				kfree(edid);
+			} else {
+				vc4_hdmi->encoder.hdmi_monitor = false;
 			}
 		}
 
@@ -262,6 +263,8 @@ vc4_hdmi_connector_detect(struct drm_connector *connector, bool force)
 		ret = connector_status_connected;
 		goto out;
 	}
+
+	vc4_hdmi->encoder.hdmi_monitor = false;
 
 	cec_phys_addr_invalidate(vc4_hdmi->cec_adap);
 
@@ -1411,9 +1414,6 @@ vc4_hdmi_sink_supports_format_bpc(const struct vc4_hdmi *vc4_hdmi,
 	switch (format) {
 	case VC4_HDMI_OUTPUT_RGB:
 		drm_dbg(dev, "RGB Format, checking the constraints.\n");
-
-		if (!(info->color_formats & DRM_COLOR_FORMAT_RGB444))
-			return false;
 
 		if (bpc == 10 && !(info->edid_hdmi_dc_modes & DRM_EDID_HDMI_DC_30)) {
 			drm_dbg(dev, "10 BPC but sink doesn't support Deep Color 30.\n");
