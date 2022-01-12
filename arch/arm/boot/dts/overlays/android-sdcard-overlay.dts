@@ -8,6 +8,7 @@
             firmware {
                 android {
                     compatible = "android,firmware";
+                    bootdevice = "sdcard";
                     fstab {
                         compatible = "android,fstab";
                         boot {
