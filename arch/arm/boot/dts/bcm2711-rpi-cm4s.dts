@@ -206,8 +206,6 @@
 #include "bcm283x-rpi-csi1-4lane.dtsi"
 #include "bcm283x-rpi-i2c0mux_0_28.dtsi"
 
-/delete-node/ &hdmi1;
-
 / {
 	chosen {
 		bootargs = "coherent_pool=1M 8250.nr_uarts=1 snd_bcm2835.enable_compat_alsa=0 snd_bcm2835.enable_hdmi=1";
@@ -416,6 +414,16 @@
 		brcm,pins = <>;
 		brcm,function = <>;
 	};
+};
+
+/* Permanently disable HDMI1 */
+&hdmi1 {
+	compatible = "disabled";
+};
+
+/* Permanently disable DDC1 */
+&ddc1 {
+	compatible = "disabled";
 };
 
 &leds {
