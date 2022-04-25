@@ -558,7 +558,6 @@
 &audio {
 	pinctrl-names = "default";
 	pinctrl-0 = <&audio_pins>;
-	brcm,disable-headphones = <1>;
 };
 
 cam0_reg: &cam1_reg {
