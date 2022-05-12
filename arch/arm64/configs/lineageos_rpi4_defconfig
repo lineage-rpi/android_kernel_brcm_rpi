@@ -1,6 +1,6 @@
 #
 # Automatically generated file; DO NOT EDIT.
-# Linux/arm64 5.10.112 Kernel Configuration
+# Linux/arm64 5.10.113 Kernel Configuration
 #
 CONFIG_CC_VERSION_TEXT="real-aarch64-linux-android-gcc (GCC) 4.9.x 20150123 (prerelease)"
 CONFIG_CC_IS_GCC=y
@@ -923,6 +923,12 @@ CONFIG_ARCH_SUPPORTS_SPECULATIVE_PAGE_FAULT=y
 CONFIG_SPECULATIVE_PAGE_FAULT=y
 # CONFIG_GUP_BENCHMARK is not set
 CONFIG_ARCH_HAS_PTE_SPECIAL=y
+
+#
+# Data Access Monitoring
+#
+# CONFIG_DAMON is not set
+# end of Data Access Monitoring
 # end of Memory Management options
 
 CONFIG_NET=y
@@ -1947,6 +1953,7 @@ CONFIG_NET_VENDOR_MELLANOX=y
 CONFIG_NET_VENDOR_MICREL=y
 # CONFIG_KS8842 is not set
 # CONFIG_KS8851 is not set
+# CONFIG_KS8851_MLL is not set
 # CONFIG_KSZ884X_PCI is not set
 CONFIG_NET_VENDOR_MICROCHIP=y
 # CONFIG_ENC28J60 is not set
@@ -5720,7 +5727,8 @@ CONFIG_ANDROID_BINDER_DEVICES="binder,hwbinder,vndbinder"
 # CONFIG_ANDROID_BINDER_IPC_SELFTEST is not set
 # CONFIG_ANDROID_DEBUG_SYMBOLS is not set
 # CONFIG_ANDROID_VENDOR_HOOKS is not set
-CONFIG_ANDROID_STRUCT_PADDING=y
+CONFIG_ANDROID_KABI_RESERVE=y
+CONFIG_ANDROID_VENDOR_OEM_DATA=y
 # end of Android
 
 # CONFIG_LIBNVDIMM is not set
