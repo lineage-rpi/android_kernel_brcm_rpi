@@ -443,7 +443,7 @@ static int btf_dump_order_type(struct btf_dump *d, __u32 id, bool through_ptr)
 		return err;
 
 	case BTF_KIND_ARRAY:
-		return btf_dump_order_type(d, btf_array(t)->type, through_ptr);
+		return btf_dump_order_type(d, btf_array(t)->type, false);
 
 	case BTF_KIND_STRUCT:
 	case BTF_KIND_UNION: {
@@ -1365,6 +1365,11 @@ static const char *btf_dump_resolve_name(struct btf_dump *d, __u32 id,
 
 	if (s->name_resolved)
 		return *cached_name ? *cached_name : orig_name;
+
+	if (btf_is_fwd(t) || (btf_is_enum(t) && btf_vlen(t) == 0)) {
+		s->name_resolved = 1;
+		return orig_name;
+	}
 
 	dup_cnt = btf_dump_name_dups(d, name_map, orig_name);
 	if (dup_cnt > 1) {

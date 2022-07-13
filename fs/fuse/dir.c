@@ -311,7 +311,7 @@ static void fuse_dentry_canonical_path(const struct path *path, struct path *can
 	char *path_name;
 	int err;
 
-	path_name = (char*)__get_free_page(GFP_KERNEL);
+	path_name = (char *)get_zeroed_page(GFP_KERNEL);
 	if (!path_name)
 		goto default_path;
 
@@ -1069,7 +1069,7 @@ int fuse_reverse_inval_entry(struct super_block *sb, u64 parent_nodeid,
 	if (!parent)
 		return -ENOENT;
 
-	inode_lock(parent);
+	inode_lock_nested(parent, I_MUTEX_PARENT);
 	if (!S_ISDIR(parent->i_mode))
 		goto unlock;
 

@@ -75,6 +75,8 @@
 
 #include "uid16.h"
 
+#include <trace/hooks/sys.h>
+
 #ifndef SET_UNALIGN_CTL
 # define SET_UNALIGN_CTL(a, b)	(-EINVAL)
 #endif
@@ -1930,13 +1932,6 @@ static int validate_prctl_map_addr(struct prctl_mm_map *prctl_map)
 	error = -EINVAL;
 
 	/*
-	 * @brk should be after @end_data in traditional maps.
-	 */
-	if (prctl_map->start_brk <= prctl_map->end_data ||
-	    prctl_map->brk <= prctl_map->end_data)
-		goto out;
-
-	/*
 	 * Neither we should allow to override limits if they set.
 	 */
 	if (check_data_rlimit(rlimit(RLIMIT_DATA), prctl_map->brk,
@@ -2644,6 +2639,7 @@ SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
 		error = -EINVAL;
 		break;
 	}
+	trace_android_vh_syscall_prctl_finished(option, me);
 	return error;
 }
 

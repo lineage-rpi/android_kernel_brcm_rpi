@@ -105,7 +105,7 @@ BPF_CALL_2(bpf_map_peek_elem, struct bpf_map *, map, void *, value)
 }
 
 const struct bpf_func_proto bpf_map_peek_elem_proto = {
-	.func		= bpf_map_pop_elem,
+	.func		= bpf_map_peek_elem,
 	.gpl_only	= false,
 	.ret_type	= RET_INTEGER,
 	.arg1_type	= ARG_CONST_MAP_PTR,
@@ -148,6 +148,18 @@ BPF_CALL_0(bpf_ktime_get_ns)
 
 const struct bpf_func_proto bpf_ktime_get_ns_proto = {
 	.func		= bpf_ktime_get_ns,
+	.gpl_only	= false,
+	.ret_type	= RET_INTEGER,
+};
+
+BPF_CALL_0(bpf_ktime_get_boot_ns)
+{
+	/* NMI safe access to clock boottime */
+	return ktime_get_boot_fast_ns();
+}
+
+const struct bpf_func_proto bpf_ktime_get_boot_ns_proto = {
+	.func		= bpf_ktime_get_boot_ns,
 	.gpl_only	= false,
 	.ret_type	= RET_INTEGER,
 };

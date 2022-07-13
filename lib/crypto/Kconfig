@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-2.0
+
+menu "Crypto library routines"
+
+config CRYPTO_LIB_AES
+	tristate
+
+config CRYPTO_LIB_ARC4
+	tristate
+
+config CRYPTO_ARCH_HAVE_LIB_BLAKE2S
+	bool
+	help
+	  Declares whether the architecture provides an arch-specific
+	  accelerated implementation of the Blake2s library interface,
+	  either builtin or as a module.
+
+config CRYPTO_LIB_BLAKE2S_GENERIC
+	def_bool !CRYPTO_ARCH_HAVE_LIB_BLAKE2S
+	help
+	  This symbol can be depended upon by arch implementations of the
+	  Blake2s library interface that require the generic code as a
+	  fallback, e.g., for SIMD implementations. If no arch specific
+	  implementation is enabled, this implementation serves the users
+	  of CRYPTO_LIB_BLAKE2S.
+
+config CRYPTO_LIB_DES
+	tristate
+
+config CRYPTO_LIB_SHA256
+	tristate
+
+endmenu
