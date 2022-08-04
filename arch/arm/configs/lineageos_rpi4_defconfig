@@ -1,6 +1,6 @@
 #
 # Automatically generated file; DO NOT EDIT.
-# Linux/arm 5.4.207 Kernel Configuration
+# Linux/arm 5.4.209 Kernel Configuration
 #
 CONFIG_CC_VERSION_TEXT="real-arm-linux-androideabi-gcc (GCC) 4.9.x 20150123 (prerelease)"
 CONFIG_CC_IS_GCC=y
@@ -683,7 +683,6 @@ CONFIG_STRICT_KERNEL_RWX=y
 CONFIG_ARCH_HAS_STRICT_MODULE_RWX=y
 CONFIG_STRICT_MODULE_RWX=y
 CONFIG_ARCH_HAS_PHYS_TO_DMA=y
-CONFIG_REFCOUNT_FULL=y
 # CONFIG_LOCK_EVENT_COUNTS is not set
 
 #
