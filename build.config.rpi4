@@ -1,0 +1,20 @@
+KERNEL_DIR=common
+. ${ROOT_DIR}/${KERNEL_DIR}/build.config.common
+. ${ROOT_DIR}/${KERNEL_DIR}/build.config.aarch64
+
+BRANCH=lineage-20.0
+DEFCONFIG=lineageos_rpi4_defconfig
+#PRE_DEFCONFIG_CMDS="KCONFIG_CONFIG=${ROOT_DIR}/${KERNEL_DIR}/arch/arm64/configs/${DEFCONFIG} ${ROOT_DIR}/${KERNEL_DIR}/scripts/kconfig/merge_config.sh -m -r ${ROOT_DIR}/${KERNEL_DIR}/arch/arm64/configs/bcm2711_defconfig ${ROOT_DIR}/${KERNEL_DIR}/kernel/configs/android-base.config ${ROOT_DIR}/${KERNEL_DIR}/kernel/configs/android-recommended-arm64.config ${ROOT_DIR}/${KERNEL_DIR}/kernel/configs/android-recommended.config"
+
+MAKE_GOALS="
+Image
+dtbs
+"
+
+FILES="
+arch/arm64/boot/Image
+arch/arm64/boot/dts/broadcom/bcm2711-rpi-4-b.dtb
+arch/arm64/boot/dts/broadcom/bcm2711-rpi-400.dtb
+arch/arm64/boot/dts/broadcom/bcm2711-rpi-cm4.dtb
+arch/arm64/boot/dts/broadcom/bcm2711-rpi-cm4s.dtb
+"
