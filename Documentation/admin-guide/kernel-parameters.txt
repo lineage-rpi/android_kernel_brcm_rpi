@@ -961,6 +961,10 @@
 			can be useful when debugging issues that require an SLB
 			miss to occur.
 
+	disable_dma32=	[KNL]
+			Dynamically disable ZONE_DMA32 on kernels compiled with
+			CONFIG_ZONE_DMA32=y.
+
 	stress_slb	[PPC]
 			Limits the number of kernel SLB entries, and flushes
 			them frequently to increase the rate of SLB faults
@@ -1396,6 +1400,10 @@
 			Format: { "fix" }
 			Permit 'security.evm' to be updated regardless of
 			current integrity status.
+	export_pmu_events
+			[KNL,ARM64] Sets the PMU export bit (PMCR_EL0.X), which enables
+			the exporting of events over an IMPLEMENTATION DEFINED PMU event
+			export bus to another device.
 
 	failslab=
 	fail_usercopy=
@@ -1645,6 +1653,10 @@
 	hvc_iucv_allow=	[S390]	Comma-separated list of z/VM user IDs.
 				If specified, z/VM IUCV HVC accepts connections
 				from listed z/VM user IDs only.
+
+	hvc_dcc.enable=	[ARM,ARM64]	Enable DCC driver at runtime. For GKI,
+				disabled at runtime by default to prevent
+				crashes in devices which do not support DCC.
 
 	hv_nopvspin	[X86,HYPER_V] Disables the paravirt spinlock optimizations
 				      which allow the hypervisor to 'idle' the
@@ -2056,6 +2068,14 @@
 			  forcing Dual Address Cycle for PCI cards supporting
 			  greater than 32-bit addressing.
 
+	iommu.max_align_shift=
+			[ARM64, X86] Limit the alignment of IOVAs to a maximum
+			PAGE_SIZE order. Larger IOVAs will be aligned to this
+			specified order. The order is expressed as a power of
+			two multiplied by the PAGE_SIZE.
+			Format: { "4" | "5" | "6" | "7" | "8" | "9" }
+			Default: 9
+
 	iommu.strict=	[ARM64, X86] Configure TLB invalidation behaviour
 			Format: { "0" | "1" }
 			0 - Lazy mode.
@@ -2077,6 +2097,9 @@
 			0 - Use IOMMU translation for DMA.
 			1 - Bypass the IOMMU for DMA.
 			unset - Use value of CONFIG_IOMMU_DEFAULT_PASSTHROUGH.
+
+	ioremap_guard	[ARM64] enable the KVM MMIO guard functionality
+			if available.
 
 	io7=		[HW] IO7 for Marvel-based Alpha systems
 			See comment before marvel_specify_io7 in
@@ -2367,14 +2390,17 @@
 	kvm-arm.mode=
 			[KVM,ARM] Select one of KVM/arm64's modes of operation.
 
+			none: Forcefully disable KVM.
+
 			nvhe: Standard nVHE-based mode, without support for
 			      protected guests.
 
 			protected: nVHE-based mode with support for guests whose
 				   state is kept private from the host.
-				   Not valid if the kernel is running in EL2.
 
-			Defaults to VHE/nVHE based on hardware support.
+			Defaults to VHE/nVHE based on hardware support. Setting
+			mode to "protected" will disable kexec and hibernation
+			for the host.
 
 	kvm-arm.vgic_v3_group0_trap=
 			[KVM,ARM] Trap guest accesses to GICv3 group-0

@@ -9,6 +9,15 @@
 #include <linux/bio.h>
 #include <linux/blk-crypto.h>
 
+/* Inline crypto feature bits.  Must set at least one. */
+enum {
+	/* Support for standard software-specified keys */
+	BLK_CRYPTO_FEATURE_STANDARD_KEYS = BIT(0),
+
+	/* Support for hardware-wrapped keys */
+	BLK_CRYPTO_FEATURE_WRAPPED_KEYS = BIT(1),
+};
+
 struct blk_keyslot_manager;
 
 /**
@@ -19,6 +28,9 @@ struct blk_keyslot_manager;
  *			The key is provided so that e.g. dm layers can evict
  *			keys from the devices that they map over.
  *			Returns 0 on success, -errno otherwise.
+ * @derive_raw_secret:	(Optional) Derive a software secret from a
+ *			hardware-wrapped key.  Returns 0 on success, -EOPNOTSUPP
+ *			if unsupported on the hardware, or another -errno code.
  *
  * This structure should be provided by storage device drivers when they set up
  * a keyslot manager - this structure holds the function ptrs that the keyslot
@@ -31,6 +43,10 @@ struct blk_ksm_ll_ops {
 	int (*keyslot_evict)(struct blk_keyslot_manager *ksm,
 			     const struct blk_crypto_key *key,
 			     unsigned int slot);
+	int (*derive_raw_secret)(struct blk_keyslot_manager *ksm,
+				 const u8 *wrapped_key,
+				 unsigned int wrapped_key_size,
+				 u8 *secret, unsigned int secret_size);
 };
 
 struct blk_keyslot_manager {
@@ -46,6 +62,12 @@ struct blk_keyslot_manager {
 	 * number.
 	 */
 	unsigned int max_dun_bytes_supported;
+
+	/*
+	 * The supported features as a bitmask of BLK_CRYPTO_FEATURE_* flags.
+	 * Most drivers should set BLK_CRYPTO_FEATURE_STANDARD_KEYS here.
+	 */
+	unsigned int features;
 
 	/*
 	 * Array of size BLK_ENCRYPTION_MODE_MAX of bitmasks that represents
@@ -105,6 +127,11 @@ int blk_ksm_evict_key(struct blk_keyslot_manager *ksm,
 void blk_ksm_reprogram_all_keys(struct blk_keyslot_manager *ksm);
 
 void blk_ksm_destroy(struct blk_keyslot_manager *ksm);
+
+int blk_ksm_derive_raw_secret(struct blk_keyslot_manager *ksm,
+			      const u8 *wrapped_key,
+			      unsigned int wrapped_key_size,
+			      u8 *secret, unsigned int secret_size);
 
 void blk_ksm_intersect_modes(struct blk_keyslot_manager *parent,
 			     const struct blk_keyslot_manager *child);

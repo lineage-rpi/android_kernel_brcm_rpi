@@ -358,10 +358,16 @@ static void virtio_vsock_event_fill(struct virtio_vsock *vsock)
 
 static void virtio_vsock_reset_sock(struct sock *sk)
 {
+	struct vsock_sock *vsk = vsock_sk(sk);
+
 	/* vmci_transport.c doesn't take sk_lock here either.  At least we're
 	 * under vsock_table_lock so the sock cannot disappear while we're
 	 * executing.
 	 */
+
+	/* Only handle our own sockets */
+	if (vsk->transport != &virtio_transport.transport)
+		return;
 
 	sk->sk_state = TCP_CLOSE;
 	sk->sk_err = ECONNRESET;
@@ -385,8 +391,7 @@ static void virtio_vsock_event_handle(struct virtio_vsock *vsock,
 	switch (le32_to_cpu(event->id)) {
 	case VIRTIO_VSOCK_EVENT_TRANSPORT_RESET:
 		virtio_vsock_update_guest_cid(vsock);
-		vsock_for_each_connected_socket(&virtio_transport.transport,
-						virtio_vsock_reset_sock);
+		vsock_for_each_connected_socket(virtio_vsock_reset_sock);
 		break;
 	}
 }
@@ -667,8 +672,7 @@ static void virtio_vsock_remove(struct virtio_device *vdev)
 	synchronize_rcu();
 
 	/* Reset all connected sockets when the device disappear */
-	vsock_for_each_connected_socket(&virtio_transport.transport,
-					virtio_vsock_reset_sock);
+	vsock_for_each_connected_socket(virtio_vsock_reset_sock);
 
 	/* Stop all work handlers to make sure no one is accessing the device,
 	 * so we can safely call vdev->config->reset().

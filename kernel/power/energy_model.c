@@ -15,6 +15,7 @@
 #include <linux/energy_model.h>
 #include <linux/sched/topology.h>
 #include <linux/slab.h>
+#include <trace/hooks/sched.h>
 
 /*
  * Mutex serializing the registrations of performance domains and letting
@@ -279,6 +280,7 @@ int em_dev_register_perf_domain(struct device *dev, unsigned int nr_states,
 {
 	unsigned long cap, prev_cap = 0;
 	int cpu, ret;
+	bool cond = false;
 
 	if (!dev || !nr_states || !cb)
 		return -EINVAL;
@@ -307,6 +309,10 @@ int em_dev_register_perf_domain(struct device *dev, unsigned int nr_states,
 				ret = -EEXIST;
 				goto unlock;
 			}
+
+			trace_android_vh_em_dev_register_pd(&cond);
+			if (cond)
+				continue;
 			/*
 			 * All CPUs of a domain must have the same
 			 * micro-architecture since they all share the same

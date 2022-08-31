@@ -15,6 +15,7 @@
 #include <linux/bitops.h>
 #include <linux/hardirq.h> /* for in_interrupt() */
 #include <linux/hugetlb_inline.h>
+#include <linux/sched/debug.h>
 
 struct pagevec;
 
@@ -310,10 +311,7 @@ static inline struct page *page_cache_alloc(struct address_space *x)
 	return __page_cache_alloc(mapping_gfp_mask(x));
 }
 
-static inline gfp_t readahead_gfp_mask(struct address_space *x)
-{
-	return mapping_gfp_mask(x) | __GFP_NORETRY | __GFP_NOWARN;
-}
+gfp_t readahead_gfp_mask(struct address_space *x);
 
 typedef int filler_t(void *, struct page *);
 
@@ -618,7 +616,7 @@ static inline int trylock_page(struct page *page)
 /*
  * lock_page may only be called if we have the page's inode pinned.
  */
-static inline void lock_page(struct page *page)
+static inline __sched void lock_page(struct page *page)
 {
 	might_sleep();
 	if (!trylock_page(page))
@@ -630,7 +628,7 @@ static inline void lock_page(struct page *page)
  * signals.  It returns 0 if it locked the page and -EINTR if it was
  * killed while waiting.
  */
-static inline int lock_page_killable(struct page *page)
+static inline __sched int lock_page_killable(struct page *page)
 {
 	might_sleep();
 	if (!trylock_page(page))
@@ -646,7 +644,7 @@ static inline int lock_page_killable(struct page *page)
  * Returns 0 if the page is locked successfully, or -EIOCBQUEUED if the page
  * was already locked and the callback defined in 'wait' was queued.
  */
-static inline int lock_page_async(struct page *page,
+static inline __sched int lock_page_async(struct page *page,
 				  struct wait_page_queue *wait)
 {
 	if (!trylock_page(page))
@@ -661,7 +659,7 @@ static inline int lock_page_async(struct page *page,
  * Return value and mmap_lock implications depend on flags; see
  * __lock_page_or_retry().
  */
-static inline int lock_page_or_retry(struct page *page, struct mm_struct *mm,
+static inline __sched int lock_page_or_retry(struct page *page, struct mm_struct *mm,
 				     unsigned int flags)
 {
 	might_sleep();
@@ -682,13 +680,13 @@ extern int wait_on_page_bit_killable(struct page *page, int bit_nr);
  * ie with increased "page->count" so that the page won't
  * go away during the wait..
  */
-static inline void wait_on_page_locked(struct page *page)
+static inline __sched void wait_on_page_locked(struct page *page)
 {
 	if (PageLocked(page))
 		wait_on_page_bit(compound_head(page), PG_locked);
 }
 
-static inline int wait_on_page_locked_killable(struct page *page)
+static inline __sched int wait_on_page_locked_killable(struct page *page)
 {
 	if (!PageLocked(page))
 		return 0;

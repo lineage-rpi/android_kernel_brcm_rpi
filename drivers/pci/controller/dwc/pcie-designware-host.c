@@ -83,6 +83,7 @@ irqreturn_t dw_handle_msi_irq(struct pcie_port *pp)
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(dw_handle_msi_irq);
 
 /* Chained MSI interrupt service routine */
 static void dw_chained_msi_isr(struct irq_desc *desc)
@@ -267,8 +268,9 @@ static void dw_pcie_free_msi(struct pcie_port *pp)
 		struct dw_pcie *pci = to_dw_pcie_from_pp(pp);
 		struct device *dev = pci->dev;
 
-		dma_unmap_single_attrs(dev, pp->msi_data, sizeof(pp->msi_msg),
-				       DMA_FROM_DEVICE, DMA_ATTR_SKIP_CPU_SYNC);
+		dma_unmap_page(dev, pp->msi_data, PAGE_SIZE, DMA_FROM_DEVICE);
+		if (pp->msi_page)
+			__free_page(pp->msi_page);
 	}
 }
 
@@ -376,13 +378,14 @@ int dw_pcie_host_init(struct pcie_port *pp)
 			if (ret)
 				dev_warn(pci->dev, "Failed to set DMA mask to 32-bit. Devices with only 32-bit MSI support may not work properly\n");
 
-			pp->msi_data = dma_map_single_attrs(pci->dev, &pp->msi_msg,
-						      sizeof(pp->msi_msg),
-						      DMA_FROM_DEVICE,
-						      DMA_ATTR_SKIP_CPU_SYNC);
+			pp->msi_page = alloc_page(GFP_DMA32);
+			pp->msi_data = dma_map_page(pci->dev, pp->msi_page, 0, PAGE_SIZE,
+						    DMA_FROM_DEVICE);
 			ret = dma_mapping_error(pci->dev, pp->msi_data);
 			if (ret) {
 				dev_err(pci->dev, "Failed to map MSI data\n");
+				__free_page(pp->msi_page);
+				pp->msi_page = NULL;
 				pp->msi_data = 0;
 				goto err_free_msi;
 			}

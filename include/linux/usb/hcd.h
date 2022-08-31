@@ -25,6 +25,7 @@
 #include <linux/rwsem.h>
 #include <linux/interrupt.h>
 #include <linux/idr.h>
+#include <linux/android_kabi.h>
 
 #define MAX_TOPO_LEVEL		6
 
@@ -66,7 +67,6 @@
 
 struct giveback_urb_bh {
 	bool running;
-	bool high_prio;
 	spinlock_t lock;
 	struct list_head  head;
 	struct tasklet_struct bh;
@@ -227,6 +227,11 @@ struct usb_hcd {
 	 * input size of periodic table to an interrupt scheduler.
 	 * (ohci 32, uhci 1024, ehci 256/512/1024).
 	 */
+
+	ANDROID_KABI_RESERVE(1);
+	ANDROID_KABI_RESERVE(2);
+	ANDROID_KABI_RESERVE(3);
+	ANDROID_KABI_RESERVE(4);
 
 	/* The HC driver's private data is stored at the end of
 	 * this structure.
@@ -421,6 +426,11 @@ struct hc_driver {
 #define EHSET_TEST_SINGLE_STEP_SET_FEATURE 0x06
 	int	(*submit_single_step_set_feature)(struct usb_hcd *,
 			struct urb *, int);
+
+	ANDROID_KABI_RESERVE(1);
+	ANDROID_KABI_RESERVE(2);
+	ANDROID_KABI_RESERVE(3);
+	ANDROID_KABI_RESERVE(4);
 };
 
 static inline int hcd_giveback_urb_in_bh(struct usb_hcd *hcd)
@@ -582,6 +592,11 @@ struct usb_tt {
 	spinlock_t		lock;
 	struct list_head	clear_list;	/* of usb_tt_clear */
 	struct work_struct	clear_work;
+
+	ANDROID_KABI_RESERVE(1);
+	ANDROID_KABI_RESERVE(2);
+	ANDROID_KABI_RESERVE(3);
+	ANDROID_KABI_RESERVE(4);
 };
 
 struct usb_tt_clear {
@@ -707,8 +722,6 @@ static inline void usb_hcd_resume_root_hub(struct usb_hcd *hcd)
 
 /*-------------------------------------------------------------------------*/
 
-#if defined(CONFIG_USB_MON) || defined(CONFIG_USB_MON_MODULE)
-
 struct usb_mon_operations {
 	void (*urb_submit)(struct usb_bus *bus, struct urb *urb);
 	void (*urb_submit_error)(struct usb_bus *bus, struct urb *urb, int err);
@@ -740,16 +753,6 @@ static inline void usbmon_urb_complete(struct usb_bus *bus, struct urb *urb,
 
 int usb_mon_register(const struct usb_mon_operations *ops);
 void usb_mon_deregister(void);
-
-#else
-
-static inline void usbmon_urb_submit(struct usb_bus *bus, struct urb *urb) {}
-static inline void usbmon_urb_submit_error(struct usb_bus *bus, struct urb *urb,
-    int error) {}
-static inline void usbmon_urb_complete(struct usb_bus *bus, struct urb *urb,
-		int status) {}
-
-#endif /* CONFIG_USB_MON || CONFIG_USB_MON_MODULE */
 
 /*-------------------------------------------------------------------------*/
 

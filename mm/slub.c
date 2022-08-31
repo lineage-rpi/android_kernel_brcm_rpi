@@ -258,22 +258,6 @@ static inline bool kmem_cache_has_cpu_partial(struct kmem_cache *s)
 /* Use cmpxchg_double */
 #define __CMPXCHG_DOUBLE	((slab_flags_t __force)0x40000000U)
 
-/*
- * Tracking user of a slab.
- */
-#define TRACK_ADDRS_COUNT 16
-struct track {
-	unsigned long addr;	/* Called from address */
-#ifdef CONFIG_STACKTRACE
-	unsigned long addrs[TRACK_ADDRS_COUNT];	/* Called from address */
-#endif
-	int cpu;		/* Was running on cpu */
-	int pid;		/* Pid context */
-	unsigned long when;	/* When did the operation occur */
-};
-
-enum track_item { TRACK_ALLOC, TRACK_FREE };
-
 #ifdef CONFIG_SYSFS
 static int sysfs_slab_add(struct kmem_cache *);
 static int sysfs_slab_alias(struct kmem_cache *, const char *);
@@ -546,7 +530,6 @@ static void __fill_map(unsigned long *obj_map, struct kmem_cache *s,
 		set_bit(__obj_to_index(s, addr, p), obj_map);
 }
 
-#if IS_ENABLED(CONFIG_KUNIT)
 static bool slab_add_kunit_errors(void)
 {
 	struct kunit_resource *resource;
@@ -562,9 +545,6 @@ static bool slab_add_kunit_errors(void)
 	kunit_put_resource(resource);
 	return true;
 }
-#else
-static inline bool slab_add_kunit_errors(void) { return false; }
-#endif
 
 /*
  * Determine a map of object in use on a page.
@@ -696,6 +676,42 @@ static struct track *get_track(struct kmem_cache *s, void *object,
 
 	return kasan_reset_tag(p + alloc);
 }
+
+/*
+ * This function will be used to loop through all the slab objects in
+ * a page to give track structure for each object, the function fn will
+ * be using this track structure and extract required info into its private
+ * data, the return value will be the number of track structures that are
+ * processed.
+ */
+unsigned long get_each_object_track(struct kmem_cache *s,
+		struct page *page, enum track_item alloc,
+		int (*fn)(const struct kmem_cache *, const void *,
+		const struct track *, void *), void *private)
+{
+	void *p;
+	struct track *t;
+	int ret;
+	unsigned long num_track = 0;
+	unsigned long flags = 0;
+
+	if (!slub_debug || !(s->flags & SLAB_STORE_USER))
+		return 0;
+
+	slab_lock(page, &flags);
+	for_each_object(p, s, page_address(page), page->objects) {
+		t = get_track(s, p, alloc);
+		metadata_access_enable();
+		ret = fn(s, p, t, private);
+		metadata_access_disable();
+		if (ret < 0)
+			break;
+		num_track += 1;
+	}
+	slab_unlock(page, &flags);
+	return num_track;
+}
+EXPORT_SYMBOL_NS_GPL(get_each_object_track, MINIDUMP);
 
 static void set_track(struct kmem_cache *s, void *object,
 			enum track_item alloc, unsigned long addr)
@@ -6240,6 +6256,7 @@ void get_slabinfo(struct kmem_cache *s, struct slabinfo *sinfo)
 	sinfo->objects_per_slab = oo_objects(s->oo);
 	sinfo->cache_order = oo_order(s->oo);
 }
+EXPORT_SYMBOL_NS_GPL(get_slabinfo, MINIDUMP);
 
 void slabinfo_show_stats(struct seq_file *m, struct kmem_cache *s)
 {

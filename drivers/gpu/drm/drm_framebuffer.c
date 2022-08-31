@@ -35,6 +35,8 @@
 #include <drm/drm_print.h>
 #include <drm/drm_util.h>
 
+#include <trace/hooks/drm_framebuffer.h>
+
 #include "drm_crtc_internal.h"
 #include "drm_internal.h"
 
@@ -965,6 +967,7 @@ static int atomic_remove_fb(struct drm_framebuffer *fb)
 	int i, ret;
 	unsigned plane_mask;
 	bool disable_crtcs = false;
+	bool allow = false;
 
 retry_disable:
 	drm_modeset_acquire_init(&ctx, 0);
@@ -1033,6 +1036,10 @@ retry:
 		if (ret)
 			goto unlock;
 	}
+
+	trace_android_vh_atomic_remove_fb(fb, &allow);
+	if (allow)
+		goto unlock;
 
 	if (plane_mask)
 		ret = drm_atomic_commit(state);

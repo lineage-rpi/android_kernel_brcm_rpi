@@ -21,6 +21,7 @@
 
 #define MTE_CTRL_TCF_SYNC		(1UL << 16)
 #define MTE_CTRL_TCF_ASYNC		(1UL << 17)
+#define MTE_CTRL_TCF_ASYMM		(1UL << 18)
 
 #ifndef __ASSEMBLY__
 
@@ -30,6 +31,7 @@
 #include <linux/stddef.h>
 #include <linux/string.h>
 #include <linux/thread_info.h>
+#include <linux/android_vendor.h>
 
 #include <vdso/processor.h>
 
@@ -144,6 +146,8 @@ struct thread_struct {
 		unsigned long	tp2_value;
 		struct user_fpsimd_state fpsimd_state;
 	} uw;
+
+	ANDROID_VENDOR_DATA(1);
 
 	unsigned int		fpsimd_cpu;
 	void			*sve_state;	/* SVE registers, if any */

@@ -40,6 +40,7 @@
 #include <linux/virtio_ring.h>
 #include <asm/byteorder.h>
 #include <linux/platform_device.h>
+#include <trace/hooks/remoteproc.h>
 
 #include "remoteproc_internal.h"
 
@@ -59,6 +60,7 @@ static int rproc_release_carveout(struct rproc *rproc,
 
 /* Unique indices for remoteproc devices */
 static DEFINE_IDA(rproc_dev_index);
+static struct workqueue_struct *rproc_recovery_wq;
 
 static const char * const rproc_crash_names[] = {
 	[RPROC_MMUFAULT]	= "mmufault",
@@ -461,6 +463,7 @@ static void rproc_rvdev_release(struct device *dev)
 	struct rproc_vdev *rvdev = container_of(dev, struct rproc_vdev, dev);
 
 	of_reserved_mem_device_release(dev);
+	dma_release_coherent_memory(dev);
 
 	kfree(rvdev);
 }
@@ -1005,6 +1008,26 @@ void rproc_add_carveout(struct rproc *rproc, struct rproc_mem_entry *mem)
 EXPORT_SYMBOL(rproc_add_carveout);
 
 /**
+ * rproc_del_carveout() - remove an allocated carveout region
+ * @rproc: rproc handle
+ * @mem: memory entry to register
+ *
+ * This function removes specified memory entry in @rproc carveouts list.
+ */
+void rproc_del_carveout(struct rproc *rproc, struct rproc_mem_entry *mem)
+{
+	struct rproc_mem_entry *entry, *tmp;
+
+	list_for_each_entry_safe(entry, tmp, &rproc->carveouts, node) {
+		if (entry == mem) {
+			list_del(&mem->node);
+			return;
+		}
+	}
+}
+EXPORT_SYMBOL(rproc_del_carveout);
+
+/**
  * rproc_mem_entry_init() - allocate and initialize rproc_mem_entry struct
  * @dev: pointer on device struct
  * @va: virtual address
@@ -1051,6 +1074,19 @@ rproc_mem_entry_init(struct device *dev,
 	return mem;
 }
 EXPORT_SYMBOL(rproc_mem_entry_init);
+
+/**
+ * rproc_mem_entry_free() - free a rproc_mem_entry struct
+ * @mem: rproc_mem_entry allocated by rproc_mem_entry_init()
+ *
+ * This function frees a rproc_mem_entry_struct that was allocated by
+ * rproc_mem_entry_init().
+ */
+void rproc_mem_entry_free(struct rproc_mem_entry *mem)
+{
+	kfree(mem);
+}
+EXPORT_SYMBOL(rproc_mem_entry_free);
 
 /**
  * rproc_of_resm_mem_entry_init() - allocate and initialize rproc_mem_entry struct
@@ -1970,6 +2006,8 @@ static void rproc_crash_handler_work(struct work_struct *work)
 	if (!rproc->recovery_disabled)
 		rproc_trigger_recovery(rproc);
 
+	trace_android_vh_rproc_recovery(rproc);
+
 	pm_relax(rproc->dev.parent);
 }
 
@@ -2752,8 +2790,11 @@ void rproc_report_crash(struct rproc *rproc, enum rproc_crash_type type)
 	dev_err(&rproc->dev, "crash detected in %s: type %s\n",
 		rproc->name, rproc_crash_to_string(type));
 
+	if (rproc_recovery_wq)
+		queue_work(rproc_recovery_wq, &rproc->crash_handler);
+	else
 	/* Have a worker handle the error; ensure system is not suspended */
-	queue_work(system_freezable_wq, &rproc->crash_handler);
+		queue_work(system_freezable_wq, &rproc->crash_handler);
 }
 EXPORT_SYMBOL(rproc_report_crash);
 
@@ -2802,6 +2843,11 @@ static void __exit rproc_exit_panic(void)
 
 static int __init remoteproc_init(void)
 {
+	rproc_recovery_wq = alloc_workqueue("rproc_recovery_wq",
+						WQ_UNBOUND | WQ_FREEZABLE, 0);
+	if (!rproc_recovery_wq)
+		pr_err("remoteproc: creation of rproc_recovery_wq failed\n");
+
 	rproc_init_sysfs();
 	rproc_init_debugfs();
 	rproc_init_cdev();
@@ -2818,6 +2864,8 @@ static void __exit remoteproc_exit(void)
 	rproc_exit_panic();
 	rproc_exit_debugfs();
 	rproc_exit_sysfs();
+	if (rproc_recovery_wq)
+		destroy_workqueue(rproc_recovery_wq);
 }
 module_exit(remoteproc_exit);
 

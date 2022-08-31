@@ -586,6 +586,7 @@ static const struct vm_operations_struct nfs_file_vm_ops = {
 	.fault = filemap_fault,
 	.map_pages = filemap_map_pages,
 	.page_mkwrite = nfs_vm_page_mkwrite,
+	.speculative = true,
 };
 
 ssize_t nfs_file_write(struct kiocb *iocb, struct iov_iter *from)

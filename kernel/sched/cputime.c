@@ -2,7 +2,9 @@
 /*
  * Simple CPU accounting cgroup controller
  */
+#include <linux/cpufreq_times.h>
 #include "sched.h"
+#include <trace/hooks/sched.h>
 
 #ifdef CONFIG_IRQ_TIME_ACCOUNTING
 
@@ -18,6 +20,7 @@
  * compromise in place of having locks on each irq in account_system_time.
  */
 DEFINE_PER_CPU(struct irqtime, cpu_irqtime);
+EXPORT_PER_CPU_SYMBOL_GPL(cpu_irqtime);
 
 static int sched_clock_irqtime;
 
@@ -53,6 +56,7 @@ void irqtime_account_irq(struct task_struct *curr, unsigned int offset)
 	unsigned int pc;
 	s64 delta;
 	int cpu;
+	bool irq_start = true;
 
 	if (!sched_clock_irqtime)
 		return;
@@ -68,10 +72,20 @@ void irqtime_account_irq(struct task_struct *curr, unsigned int offset)
 	 * in that case, so as not to confuse scheduler with a special task
 	 * that do not consume any time, but still wants to run.
 	 */
-	if (pc & HARDIRQ_MASK)
+	if (pc & HARDIRQ_MASK) {
 		irqtime_account_delta(irqtime, delta, CPUTIME_IRQ);
-	else if ((pc & SOFTIRQ_OFFSET) && curr != this_cpu_ksoftirqd())
+		irq_start = false;
+	} else if ((pc & SOFTIRQ_OFFSET) && curr != this_cpu_ksoftirqd()) {
 		irqtime_account_delta(irqtime, delta, CPUTIME_SOFTIRQ);
+		irq_start = false;
+	}
+
+	trace_android_rvh_account_irq(curr, cpu, delta);
+
+	if (irq_start)
+		trace_android_rvh_account_irq_start(curr, cpu, delta);
+	else
+		trace_android_rvh_account_irq_end(curr, cpu, delta);
 }
 
 static u64 irqtime_tick_accounted(u64 maxtime)
@@ -130,6 +144,9 @@ void account_user_time(struct task_struct *p, u64 cputime)
 
 	/* Account for user time used */
 	acct_account_cputime(p);
+
+	/* Account power usage for user time */
+	cpufreq_acct_update_power(p, cputime);
 }
 
 /*
@@ -174,6 +191,9 @@ void account_system_index_time(struct task_struct *p,
 
 	/* Account for system time used */
 	acct_account_cputime(p);
+
+	/* Account power usage for system time */
+	cpufreq_acct_update_power(p, cputime);
 }
 
 /*
@@ -389,6 +409,7 @@ static void irqtime_account_process_tick(struct task_struct *p, int user_tick,
 	} else {
 		account_system_index_time(p, cputime, CPUTIME_SYSTEM);
 	}
+	trace_android_vh_irqtime_account_process_tick(p, this_rq(), user_tick, ticks);
 }
 
 static void irqtime_account_idle_ticks(int ticks)
@@ -458,6 +479,7 @@ void thread_group_cputime_adjusted(struct task_struct *p, u64 *ut, u64 *st)
 	*ut = cputime.utime;
 	*st = cputime.stime;
 }
+EXPORT_SYMBOL_GPL(thread_group_cputime_adjusted);
 
 #else /* !CONFIG_VIRT_CPU_ACCOUNTING_NATIVE: */
 
@@ -472,6 +494,7 @@ void account_process_tick(struct task_struct *p, int user_tick)
 
 	if (vtime_accounting_enabled_this_cpu())
 		return;
+	trace_android_vh_account_task_time(p, this_rq(), user_tick);
 
 	if (sched_clock_irqtime) {
 		irqtime_account_process_tick(p, user_tick, 1);
@@ -627,6 +650,8 @@ void thread_group_cputime_adjusted(struct task_struct *p, u64 *ut, u64 *st)
 	thread_group_cputime(p, &cputime);
 	cputime_adjust(&cputime, &p->signal->prev_cputime, ut, st);
 }
+EXPORT_SYMBOL_GPL(thread_group_cputime_adjusted);
+
 #endif /* !CONFIG_VIRT_CPU_ACCOUNTING_NATIVE */
 
 #ifdef CONFIG_VIRT_CPU_ACCOUNTING_GEN

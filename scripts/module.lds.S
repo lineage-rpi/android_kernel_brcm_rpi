@@ -27,6 +27,8 @@ SECTIONS {
 	.ctors			0 : ALIGN(8) { *(SORT(.ctors.*)) *(.ctors) }
 	.init_array		0 : ALIGN(8) { *(SORT(.init_array.*)) *(.init_array) }
 
+	.altinstructions	0 : ALIGN(8) { KEEP(*(.altinstructions)) }
+	__bug_table		0 : ALIGN(8) { KEEP(*(__bug_table)) }
 	__jump_table		0 : ALIGN(8) { KEEP(*(__jump_table)) }
 
 	__patchable_function_entries : { *(__patchable_function_entries) }
@@ -48,8 +50,10 @@ SECTIONS {
 	}
 
 	.rodata : {
+		*(.rodata.._start)
 		*(.rodata .rodata.[0-9a-zA-Z_]*)
 		*(.rodata..L*)
+		*(.rodata.._end)
 	}
 
 	/*
@@ -57,8 +61,11 @@ SECTIONS {
 	 * of the .text section, and is aligned to PAGE_SIZE.
 	 */
 	.text : ALIGN_CFI {
+		*(.text.._start)
 		*(.text.__cfi_check)
 		*(.text .text.[0-9a-zA-Z_]* .text..L.cfi*)
+		*(.text.._end)
+		*(.text.._fips140_unchecked)
 	}
 #endif
 }

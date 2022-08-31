@@ -32,6 +32,7 @@
 #ifdef CONFIG_RWSEM_SPIN_ON_OWNER
 #include <linux/osq_lock.h>
 #endif
+#include <linux/android_vendor.h>
 
 /*
  * For an uncontended rwsem, count and owner are the only fields a task
@@ -64,6 +65,24 @@ struct rw_semaphore {
 #ifdef CONFIG_DEBUG_LOCK_ALLOC
 	struct lockdep_map	dep_map;
 #endif
+	ANDROID_VENDOR_DATA(1);
+	ANDROID_OEM_DATA_ARRAY(1, 2);
+};
+
+enum rwsem_waiter_type {
+	RWSEM_WAITING_FOR_WRITE,
+	RWSEM_WAITING_FOR_READ
+};
+
+struct rwsem_waiter {
+	struct list_head list;
+	struct task_struct *task;
+	enum rwsem_waiter_type type;
+	unsigned long timeout;
+	unsigned long last_rowner;
+
+	/* Writer only, not initialized in reader */
+	bool handoff_set;
 };
 
 /* In all implementations count != 0 means locked */

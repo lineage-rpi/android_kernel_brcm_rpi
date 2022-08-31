@@ -12,7 +12,7 @@
 
 struct notifier_block;
 
-void add_device_randomness(const void *buf, size_t len);
+void add_device_randomness(const void *buf, unsigned int len);
 void __init add_bootloader_randomness(const void *buf, size_t len);
 void add_input_randomness(unsigned int type, unsigned int code,
 			  unsigned int value) __latent_entropy;
@@ -28,7 +28,7 @@ static inline void add_latent_entropy(void)
 static inline void add_latent_entropy(void) { }
 #endif
 
-void get_random_bytes(void *buf, size_t len);
+void get_random_bytes(void *buf, int len);
 size_t __must_check get_random_bytes_arch(void *buf, size_t len);
 u32 get_random_u32(void);
 u64 get_random_u64(void);
@@ -137,5 +137,18 @@ int random_online_cpu(unsigned int cpu);
 #ifndef MODULE
 extern const struct file_operations random_fops, urandom_fops;
 #endif
+
+/*
+ * Android KABI fixups
+ * Added back the following structure and calls to preserve the ABI for
+ * out-of-tree drivers that were using them.
+ */
+struct random_ready_callback {
+	struct list_head list;
+	void (*func)(struct random_ready_callback *rdy);
+	struct module *owner;
+};
+int add_random_ready_callback(struct random_ready_callback *rdy);
+void del_random_ready_callback(struct random_ready_callback *rdy);
 
 #endif /* _LINUX_RANDOM_H */

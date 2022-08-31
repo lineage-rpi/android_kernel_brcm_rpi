@@ -313,8 +313,6 @@ static blk_status_t virtio_queue_rq(struct blk_mq_hw_ctx *hctx,
 	int err;
 	bool notify = false;
 
-	BUG_ON(req->nr_phys_segments + 2 > vblk->sg_elems);
-
 	err = virtblk_setup_cmd(vblk->vdev, req, vbr);
 	if (unlikely(err))
 		return err;
@@ -552,6 +550,10 @@ static int init_vq(struct virtio_blk *vblk)
 				   &num_vqs);
 	if (err)
 		num_vqs = 1;
+	if (!err && !num_vqs) {
+		dev_err(&vdev->dev, "MQ advertisted but zero queues reported\n");
+		return -EINVAL;
+	}
 
 	num_vqs = min_t(unsigned int, nr_cpu_ids, num_vqs);
 

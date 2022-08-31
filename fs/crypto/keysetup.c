@@ -122,16 +122,22 @@ err_free_tfm:
 
 /*
  * Prepare the crypto transform object or blk-crypto key in @prep_key, given the
- * raw key, encryption mode, and flag indicating which encryption implementation
- * (fs-layer or blk-crypto) will be used.
+ * raw key, encryption mode (@ci->ci_mode), flag indicating which encryption
+ * implementation (fs-layer or blk-crypto) will be used (@ci->ci_inlinecrypt),
+ * and IV generation method (@ci->ci_policy.flags).
  */
 int fscrypt_prepare_key(struct fscrypt_prepared_key *prep_key,
-			const u8 *raw_key, const struct fscrypt_info *ci)
+			const u8 *raw_key, unsigned int raw_key_size,
+			bool is_hw_wrapped, const struct fscrypt_info *ci)
 {
 	struct crypto_skcipher *tfm;
 
 	if (fscrypt_using_inline_encryption(ci))
-		return fscrypt_prepare_inline_crypt_key(prep_key, raw_key, ci);
+		return fscrypt_prepare_inline_crypt_key(prep_key,
+				raw_key, raw_key_size, is_hw_wrapped, ci);
+
+	if (WARN_ON(is_hw_wrapped || raw_key_size != ci->ci_mode->keysize))
+		return -EINVAL;
 
 	tfm = fscrypt_allocate_skcipher(ci->ci_mode, raw_key, ci->ci_inode);
 	if (IS_ERR(tfm))
@@ -157,7 +163,9 @@ void fscrypt_destroy_prepared_key(struct fscrypt_prepared_key *prep_key)
 int fscrypt_set_per_file_enc_key(struct fscrypt_info *ci, const u8 *raw_key)
 {
 	ci->ci_owns_key = true;
-	return fscrypt_prepare_key(&ci->ci_enc_key, raw_key, ci);
+	return fscrypt_prepare_key(&ci->ci_enc_key, raw_key,
+				   ci->ci_mode->keysize,
+				   false /*is_hw_wrapped*/, ci);
 }
 
 static int setup_per_mode_enc_key(struct fscrypt_info *ci,
@@ -189,24 +197,48 @@ static int setup_per_mode_enc_key(struct fscrypt_info *ci,
 	if (fscrypt_is_key_prepared(prep_key, ci))
 		goto done_unlock;
 
-	BUILD_BUG_ON(sizeof(mode_num) != 1);
-	BUILD_BUG_ON(sizeof(sb->s_uuid) != 16);
-	BUILD_BUG_ON(sizeof(hkdf_info) != 17);
-	hkdf_info[hkdf_infolen++] = mode_num;
-	if (include_fs_uuid) {
-		memcpy(&hkdf_info[hkdf_infolen], &sb->s_uuid,
-		       sizeof(sb->s_uuid));
-		hkdf_infolen += sizeof(sb->s_uuid);
+	if (mk->mk_secret.is_hw_wrapped && S_ISREG(inode->i_mode)) {
+		int i;
+
+		if (!fscrypt_using_inline_encryption(ci)) {
+			fscrypt_warn(ci->ci_inode,
+				     "Hardware-wrapped keys require inline encryption (-o inlinecrypt)");
+			err = -EINVAL;
+			goto out_unlock;
+		}
+		for (i = 0; i <= FSCRYPT_MODE_MAX; i++) {
+			if (fscrypt_is_key_prepared(&keys[i], ci)) {
+				fscrypt_warn(ci->ci_inode,
+					     "Each hardware-wrapped key can only be used with one encryption mode");
+				err = -EINVAL;
+				goto out_unlock;
+			}
+		}
+		err = fscrypt_prepare_key(prep_key, mk->mk_secret.raw,
+					  mk->mk_secret.size, true, ci);
+		if (err)
+			goto out_unlock;
+	} else {
+		BUILD_BUG_ON(sizeof(mode_num) != 1);
+		BUILD_BUG_ON(sizeof(sb->s_uuid) != 16);
+		BUILD_BUG_ON(sizeof(hkdf_info) != 17);
+		hkdf_info[hkdf_infolen++] = mode_num;
+		if (include_fs_uuid) {
+			memcpy(&hkdf_info[hkdf_infolen], &sb->s_uuid,
+				   sizeof(sb->s_uuid));
+			hkdf_infolen += sizeof(sb->s_uuid);
+		}
+		err = fscrypt_hkdf_expand(&mk->mk_secret.hkdf,
+					  hkdf_context, hkdf_info, hkdf_infolen,
+					  mode_key, mode->keysize);
+		if (err)
+			goto out_unlock;
+		err = fscrypt_prepare_key(prep_key, mode_key, mode->keysize,
+					  false /*is_hw_wrapped*/, ci);
+		memzero_explicit(mode_key, mode->keysize);
+		if (err)
+			goto out_unlock;
 	}
-	err = fscrypt_hkdf_expand(&mk->mk_secret.hkdf,
-				  hkdf_context, hkdf_info, hkdf_infolen,
-				  mode_key, mode->keysize);
-	if (err)
-		goto out_unlock;
-	err = fscrypt_prepare_key(prep_key, mode_key, ci);
-	memzero_explicit(mode_key, mode->keysize);
-	if (err)
-		goto out_unlock;
 done_unlock:
 	ci->ci_enc_key = *prep_key;
 	err = 0;
@@ -310,6 +342,14 @@ static int fscrypt_setup_v2_file_key(struct fscrypt_info *ci,
 				     bool need_dirhash_key)
 {
 	int err;
+
+	if (mk->mk_secret.is_hw_wrapped &&
+	    !(ci->ci_policy.v2.flags & (FSCRYPT_POLICY_FLAG_IV_INO_LBLK_64 |
+					FSCRYPT_POLICY_FLAG_IV_INO_LBLK_32))) {
+		fscrypt_warn(ci->ci_inode,
+			     "Hardware-wrapped keys are only supported with IV_INO_LBLK policies");
+		return -EINVAL;
+	}
 
 	if (ci->ci_policy.v2.flags & FSCRYPT_POLICY_FLAG_DIRECT_KEY) {
 		/*
@@ -420,10 +460,6 @@ static int setup_file_encryption_key(struct fscrypt_info *ci,
 	struct fscrypt_key_specifier mk_spec;
 	int err;
 
-	err = fscrypt_select_encryption_impl(ci);
-	if (err)
-		return err;
-
 	switch (ci->ci_policy.version) {
 	case FSCRYPT_POLICY_V1:
 		mk_spec.type = FSCRYPT_KEY_SPEC_TYPE_DESCRIPTOR;
@@ -448,6 +484,10 @@ static int setup_file_encryption_key(struct fscrypt_info *ci,
 		    ci->ci_policy.version != FSCRYPT_POLICY_V1)
 			return PTR_ERR(key);
 
+		err = fscrypt_select_encryption_impl(ci, false);
+		if (err)
+			return err;
+
 		/*
 		 * As a legacy fallback for v1 policies, search for the key in
 		 * the current task's subscribed keyrings too.  Don't move this
@@ -470,6 +510,10 @@ static int setup_file_encryption_key(struct fscrypt_info *ci,
 		err = -ENOKEY;
 		goto out_release_key;
 	}
+
+	err = fscrypt_select_encryption_impl(ci, mk->mk_secret.is_hw_wrapped);
+	if (err)
+		goto out_release_key;
 
 	switch (ci->ci_policy.version) {
 	case FSCRYPT_POLICY_V1:
