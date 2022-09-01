@@ -9,6 +9,23 @@
 #include <sound/pcm_params.h>
 #include <sound/pcm_iec958.h>
 
+/**
+ * snd_pcm_create_iec958_consumer_default - create default consumer format IEC958 channel status
+ * @cs: channel status buffer, at least four bytes
+ * @len: length of channel status buffer
+ *
+ * Create the consumer format channel status data in @cs of maximum size
+ * @len. When relevant, the configuration-dependant bits will be set as
+ * unspecified.
+ *
+ * Drivers should then call einter snd_pcm_fill_iec958_consumer() or
+ * snd_pcm_fill_iec958_consumer_hw_params() to replace these unspecified
+ * bits by their actual values.
+ *
+ * Drivers may wish to tweak the contents of the buffer after creation.
+ *
+ * Returns: length of buffer, or negative error code if something failed.
+ */
 int snd_pcm_create_iec958_consumer_default(u8 *cs, size_t len)
 {
 	if (len < 4)
@@ -26,7 +43,7 @@ int snd_pcm_create_iec958_consumer_default(u8 *cs, size_t len)
 
 	return len;
 }
-EXPORT_SYMBOL(snd_pcm_create_iec958_consumer_default);
+EXPORT_SYMBOL_GPL(snd_pcm_create_iec958_consumer_default);
 
 static int fill_iec958_consumer(uint rate, uint sample_width,
 				u8 *cs, size_t len)
@@ -99,13 +116,20 @@ static int fill_iec958_consumer(uint rate, uint sample_width,
 	return len;
 }
 
-int snd_pcm_fill_iec958_consumer_hw_params(struct snd_pcm_hw_params *params,
-					   u8 *cs, size_t len)
-{
-	return fill_iec958_consumer(params_rate(params), params_width(params), cs, len);
-}
-EXPORT_SYMBOL(snd_pcm_fill_iec958_consumer_hw_params);
-
+/**
+ * snd_pcm_fill_iec958_consumer - Fill consumer format IEC958 channel status
+ * @runtime: pcm runtime structure with ->rate filled in
+ * @cs: channel status buffer, at least four bytes
+ * @len: length of channel status buffer
+ *
+ * Fill the unspecified bits in an IEC958 status bits array using the
+ * parameters of the PCM runtime @runtime.
+ *
+ * Drivers may wish to tweak the contents of the buffer after its been
+ * filled.
+ *
+ * Returns: length of buffer, or negative error code if something failed.
+ */
 int snd_pcm_fill_iec958_consumer(struct snd_pcm_runtime *runtime,
 				 u8 *cs, size_t len)
 {
@@ -113,7 +137,28 @@ int snd_pcm_fill_iec958_consumer(struct snd_pcm_runtime *runtime,
 				    snd_pcm_format_width(runtime->format),
 				    cs, len);
 }
-EXPORT_SYMBOL(snd_pcm_fill_iec958_consumer);
+EXPORT_SYMBOL_GPL(snd_pcm_fill_iec958_consumer);
+
+/**
+ * snd_pcm_fill_iec958_consumer_hw_params - Fill consumer format IEC958 channel status
+ * @params: the hw_params instance for extracting rate and sample format
+ * @cs: channel status buffer, at least four bytes
+ * @len: length of channel status buffer
+ *
+ * Fill the unspecified bits in an IEC958 status bits array using the
+ * parameters of the PCM hardware parameters @params.
+ *
+ * Drivers may wish to tweak the contents of the buffer after its been
+ * filled..
+ *
+ * Returns: length of buffer, or negative error code if something failed.
+ */
+int snd_pcm_fill_iec958_consumer_hw_params(struct snd_pcm_hw_params *params,
+					   u8 *cs, size_t len)
+{
+	return fill_iec958_consumer(params_rate(params), params_width(params), cs, len);
+}
+EXPORT_SYMBOL_GPL(snd_pcm_fill_iec958_consumer_hw_params);
 
 /**
  * snd_pcm_create_iec958_consumer - create consumer format IEC958 channel status
