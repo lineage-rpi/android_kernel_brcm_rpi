@@ -2,7 +2,7 @@ KERNEL_DIR=common
 . ${ROOT_DIR}/${KERNEL_DIR}/build.config.common
 . ${ROOT_DIR}/${KERNEL_DIR}/build.config.aarch64
 
-BRANCH=lineage-19.1
+BRANCH=
 DEFCONFIG=lineageos_rpi4_defconfig
 
 MAKE_GOALS="
