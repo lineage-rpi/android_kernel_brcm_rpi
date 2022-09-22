@@ -1,6 +1,6 @@
 #
 # Automatically generated file; DO NOT EDIT.
-# Linux/arm64 5.10.140 Kernel Configuration
+# Linux/arm64 5.10.144 Kernel Configuration
 #
 CONFIG_CC_VERSION_TEXT="Android (7284624, based on r416183b) clang version 12.0.5 (https://android.googlesource.com/toolchain/llvm-project c935d99d7cf2016289302412d708641d52d2f7ee)"
 CONFIG_GCC_VERSION=0
@@ -361,6 +361,7 @@ CONFIG_ARM64_ERRATUM_1508412=y
 CONFIG_ARM64_WORKAROUND_TSB_FLUSH_FAILURE=y
 CONFIG_ARM64_ERRATUM_2054223=y
 CONFIG_ARM64_ERRATUM_2067961=y
+CONFIG_ARM64_ERRATUM_2457168=y
 # CONFIG_CAVIUM_ERRATUM_22375 is not set
 # CONFIG_CAVIUM_ERRATUM_23154 is not set
 # CONFIG_CAVIUM_ERRATUM_27456 is not set
@@ -6067,7 +6068,6 @@ CONFIG_INIT_STACK_ALL_ZERO=y
 # end of Kernel hardening options
 # end of Security options
 
-CONFIG_XOR_BLOCKS=y
 CONFIG_CRYPTO=y
 
 #
