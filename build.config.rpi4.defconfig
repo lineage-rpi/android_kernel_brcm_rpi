@@ -1,0 +1,15 @@
+KERNEL_DIR=common
+. ${ROOT_DIR}/${KERNEL_DIR}/build.config.common
+. ${ROOT_DIR}/${KERNEL_DIR}/build.config.aarch64
+
+BRANCH=
+DEFCONFIG=lineageos_rpi4_defconfig
+#PRE_DEFCONFIG_CMDS="KCONFIG_CONFIG=${ROOT_DIR}/${KERNEL_DIR}/arch/${ARCH}/configs/${DEFCONFIG} ${ROOT_DIR}/${KERNEL_DIR}/scripts/kconfig/merge_config.sh -m -r ${ROOT_DIR}/${KERNEL_DIR}/arch/${ARCH}/configs/bcm2711_defconfig ${ROOT_DIR}/${KERNEL_DIR}/kernel/configs/android-base.config ${ROOT_DIR}/${KERNEL_DIR}/kernel/configs/android-recommended-${ARCH}.config ${ROOT_DIR}/${KERNEL_DIR}/kernel/configs/android-recommended.config"
+POST_DEFCONFIG_CMDS="(cp ${ROOT_DIR}/out/${KERNEL_DIR}/.config ${ROOT_DIR}/${KERNEL_DIR}/arch/${ARCH}/configs/${DEFCONFIG} && git -C ${ROOT_DIR}/${KERNEL_DIR} add ${ROOT_DIR}/${KERNEL_DIR}/arch/${ARCH}/configs/${DEFCONFIG} && git -C ${ROOT_DIR}/${KERNEL_DIR} commit -m 'defconfig: regenerate')"
+
+MAKE_GOALS="
+${DEFCONFIG}
+"
+
+FILES="
+"
