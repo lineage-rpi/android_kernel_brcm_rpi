@@ -4,7 +4,6 @@ KERNEL_DIR=common
 
 BRANCH=
 DEFCONFIG=lineageos_rpi4_defconfig
-#PRE_DEFCONFIG_CMDS="KCONFIG_CONFIG=${ROOT_DIR}/${KERNEL_DIR}/arch/arm64/configs/${DEFCONFIG} ${ROOT_DIR}/${KERNEL_DIR}/scripts/kconfig/merge_config.sh -m -r ${ROOT_DIR}/${KERNEL_DIR}/arch/arm64/configs/bcm2711_defconfig ${ROOT_DIR}/${KERNEL_DIR}/kernel/configs/android-base.config ${ROOT_DIR}/${KERNEL_DIR}/kernel/configs/android-recommended-arm64.config ${ROOT_DIR}/${KERNEL_DIR}/kernel/configs/android-recommended.config"
 
 MAKE_GOALS="
 Image
