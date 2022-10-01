@@ -41,6 +41,7 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
 	camera-mux-4port.dtbo \
 	cap1106.dtbo \
 	chipdip-dac.dtbo \
+	cirrus-wm5102.dtbo \
 	cma.dtbo \
 	cutiepi-panel.dtbo \
 	dacberry400.dtbo \
@@ -109,6 +110,7 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
 	i2c4.dtbo \
 	i2c5.dtbo \
 	i2c6.dtbo \
+	i2s-dac.dtbo \
 	i2s-gpio28-31.dtbo \
 	ilitek251x.dtbo \
 	imx219.dtbo \
@@ -180,6 +182,7 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
 	pitft28-resistive.dtbo \
 	pitft35-resistive.dtbo \
 	pps-gpio.dtbo \
+	proto-codec.dtbo \
 	pwm.dtbo \
 	pwm-2chan.dtbo \
 	pwm-ir-tx.dtbo \
@@ -189,13 +192,13 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
 	ramoops-pi4.dtbo \
 	rotary-encoder.dtbo \
 	rpi-backlight.dtbo \
-	rpi-cirrus-wm5102.dtbo \
-	rpi-dac.dtbo \
-	rpi-display.dtbo \
+	rpi-codeczero.dtbo \
+	rpi-dacplus.dtbo \
+	rpi-dacpro.dtbo \
+	rpi-digiampplus.dtbo \
 	rpi-ft5406.dtbo \
 	rpi-poe.dtbo \
 	rpi-poe-plus.dtbo \
-	rpi-proto.dtbo \
 	rpi-sense.dtbo \
 	rpi-tv.dtbo \
 	rra-digidac1-wm8741-audio.dtbo \
@@ -272,6 +275,7 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
 	w1-gpio.dtbo \
 	w1-gpio-pullup.dtbo \
 	w5500.dtbo \
+	watterott-display.dtbo \
 	waveshare-can-fd-hat-mode-a.dtbo \
 	waveshare-can-fd-hat-mode-b.dtbo \
 	wittypi.dtbo \
