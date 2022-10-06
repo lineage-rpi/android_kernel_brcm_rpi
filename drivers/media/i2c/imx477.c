@@ -1591,6 +1591,7 @@ static void imx477_set_framing_limits(struct imx477 *imx477)
 	hblank_min = mode->line_length_pix - mode->width;
 	__v4l2_ctrl_modify_range(imx477->hblank, hblank_min,
 				 IMX477_LINE_LENGTH_MAX, 1, hblank_min);
+	__v4l2_ctrl_s_ctrl(imx477->hblank, hblank_min);
 }
 
 static int imx477_set_pad_format(struct v4l2_subdev *sd,
@@ -1626,7 +1627,7 @@ static int imx477_set_pad_format(struct v4l2_subdev *sd,
 			framefmt = v4l2_subdev_get_try_format(sd, sd_state,
 							      fmt->pad);
 			*framefmt = fmt->format;
-		} else {
+		} else if (imx477->mode != mode) {
 			imx477->mode = mode;
 			imx477->fmt_code = fmt->format.code;
 			imx477_set_framing_limits(imx477);

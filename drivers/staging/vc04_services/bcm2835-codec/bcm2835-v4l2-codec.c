@@ -2461,11 +2461,6 @@ static int vidioc_decoder_cmd(struct file *file, void *priv,
 static int vidioc_try_encoder_cmd(struct file *file, void *priv,
 				  struct v4l2_encoder_cmd *cmd)
 {
-	struct bcm2835_codec_ctx *ctx = file2ctx(file);
-
-	if (ctx->dev->role != ENCODE && ctx->dev->role != ENCODE_IMAGE)
-		return -EINVAL;
-
 	switch (cmd->cmd) {
 	case V4L2_ENC_CMD_STOP:
 		break;
@@ -3642,8 +3637,6 @@ static int bcm2835_codec_create(struct bcm2835_codec_driver *drv,
 		video_nr = encode_video_nr;
 		break;
 	case ISP:
-		v4l2_disable_ioctl(vfd, VIDIOC_ENCODER_CMD);
-		v4l2_disable_ioctl(vfd, VIDIOC_TRY_ENCODER_CMD);
 		v4l2_disable_ioctl(vfd, VIDIOC_DECODER_CMD);
 		v4l2_disable_ioctl(vfd, VIDIOC_TRY_DECODER_CMD);
 		v4l2_disable_ioctl(vfd, VIDIOC_S_PARM);
@@ -3652,8 +3645,6 @@ static int bcm2835_codec_create(struct bcm2835_codec_driver *drv,
 		video_nr = isp_video_nr;
 		break;
 	case DEINTERLACE:
-		v4l2_disable_ioctl(vfd, VIDIOC_ENCODER_CMD);
-		v4l2_disable_ioctl(vfd, VIDIOC_TRY_ENCODER_CMD);
 		v4l2_disable_ioctl(vfd, VIDIOC_DECODER_CMD);
 		v4l2_disable_ioctl(vfd, VIDIOC_TRY_DECODER_CMD);
 		v4l2_disable_ioctl(vfd, VIDIOC_S_PARM);
