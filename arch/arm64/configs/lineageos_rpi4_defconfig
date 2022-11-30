@@ -1,6 +1,6 @@
 #
 # Automatically generated file; DO NOT EDIT.
-# Linux/arm64 5.15.74 Kernel Configuration
+# Linux/arm64 5.15.75 Kernel Configuration
 #
 CONFIG_CC_VERSION_TEXT="Android (8508608, based on r450784e) clang version 14.0.7 (https://android.googlesource.com/toolchain/llvm-project 4c603efb0cca074e9238af8b4106c30add4418f6)"
 CONFIG_GCC_VERSION=0
@@ -363,6 +363,7 @@ CONFIG_ARM64_ERRATUM_1165522=y
 CONFIG_ARM64_ERRATUM_1319367=y
 CONFIG_ARM64_ERRATUM_1530923=y
 CONFIG_ARM64_WORKAROUND_REPEAT_TLBI=y
+CONFIG_ARM64_ERRATUM_2441007=y
 CONFIG_ARM64_ERRATUM_1286807=y
 CONFIG_ARM64_ERRATUM_1463225=y
 CONFIG_ARM64_ERRATUM_1542419=y
@@ -6265,6 +6266,7 @@ CONFIG_LSM="landlock,lockdown,yama,loadpin,safesetid,integrity,selinux,smack,tom
 # Memory initialization
 #
 CONFIG_CC_HAS_AUTO_VAR_INIT_PATTERN=y
+CONFIG_CC_HAS_AUTO_VAR_INIT_ZERO_ENABLER=y
 CONFIG_CC_HAS_AUTO_VAR_INIT_ZERO=y
 # CONFIG_INIT_STACK_NONE is not set
 # CONFIG_INIT_STACK_ALL_PATTERN is not set
@@ -6610,6 +6612,8 @@ CONFIG_BOOT_PRINTK_DELAY=y
 CONFIG_SYMBOLIC_ERRNAME=y
 CONFIG_DEBUG_BUGVERBOSE=y
 # end of printk and dmesg options
+
+CONFIG_AS_HAS_NON_CONST_LEB128=y
 
 #
 # Compile-time checks and compiler options
