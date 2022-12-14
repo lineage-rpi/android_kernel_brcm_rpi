@@ -507,7 +507,7 @@ static int vc4_hdmi_connector_get_modes(struct drm_connector *connector)
 	ret = drm_add_edid_modes(connector, edid);
 	kfree(edid);
 
-	if (!vc4->hvs->vc5_hdmi_enable_scrambling) {
+	if (!vc4->hvs->vc5_hdmi_enable_hdmi_20) {
 		struct drm_device *drm = connector->dev;
 		const struct drm_display_mode *mode;
 
@@ -1959,6 +1959,7 @@ vc4_hdmi_sink_supports_format_bpc(const struct vc4_hdmi *vc4_hdmi,
 
 static enum drm_mode_status
 vc4_hdmi_encoder_clock_valid(const struct vc4_hdmi *vc4_hdmi,
+			     const struct drm_display_mode *mode,
 			     unsigned long long clock)
 {
 	const struct drm_connector *connector = &vc4_hdmi->connector;
@@ -1968,7 +1969,13 @@ vc4_hdmi_encoder_clock_valid(const struct vc4_hdmi *vc4_hdmi,
 	if (clock > vc4_hdmi->variant->max_pixel_clock)
 		return MODE_CLOCK_HIGH;
 
-	if (!vc4->hvs->vc5_hdmi_enable_scrambling && clock > HDMI_14_MAX_TMDS_CLK)
+	if (!vc4->hvs->vc5_hdmi_enable_hdmi_20 && clock > HDMI_14_MAX_TMDS_CLK)
+		return MODE_CLOCK_HIGH;
+
+	/* 4096x2160@60 is not reliable without overclocking core */
+	if (!vc4->hvs->vc5_hdmi_enable_4096by2160 &&
+	    mode->hdisplay > 3840 && mode->vdisplay >= 2160 &&
+	    drm_mode_vrefresh(mode) >= 50)
 		return MODE_CLOCK_HIGH;
 
 	if (info->max_tmds_clock && clock > (info->max_tmds_clock * 1000))
@@ -2002,7 +2009,7 @@ vc4_hdmi_encoder_compute_clock(const struct vc4_hdmi *vc4_hdmi,
 	unsigned long long clock;
 
 	clock = vc4_hdmi_encoder_compute_mode_clock(mode, bpc, fmt);
-	if (vc4_hdmi_encoder_clock_valid(vc4_hdmi, clock) != MODE_OK)
+	if (vc4_hdmi_encoder_clock_valid(vc4_hdmi, mode, clock) != MODE_OK)
 		return -EINVAL;
 
 	vc4_state->pixel_rate = clock;
@@ -2101,7 +2108,6 @@ static int vc4_hdmi_encoder_atomic_check(struct drm_encoder *encoder,
 	struct drm_connector *connector = &vc4_hdmi->connector;
 	struct drm_connector_state *old_conn_state = drm_atomic_get_old_connector_state(conn_state->state, connector);
 	struct vc4_hdmi_connector_state *old_vc4_state = conn_state_to_vc4_hdmi_conn_state(old_conn_state);
-	struct vc4_dev *vc4 = to_vc4_dev(connector->dev);
 	unsigned long long pixel_rate = mode->clock * 1000;
 	unsigned long long tmds_rate;
 	int ret;
@@ -2125,12 +2131,6 @@ static int vc4_hdmi_encoder_atomic_check(struct drm_encoder *encoder,
 		    (mode->hsync_end % 2) || (mode->htotal % 2))
 			return -EINVAL;
 	}
-
-	/* 4096x2160@60 is not reliable without overclocking core */
-	if (mode->hdisplay > 3840 && mode->vdisplay >= 2160 &&
-	    drm_mode_vrefresh(mode) >= 50 &&
-	    !vc4->hvs->vc5_hdmi_enable_4096by2160)
-		return -EINVAL;
 
 	/*
 	 * The 1440p@60 pixel rate is in the same range than the first
@@ -2163,8 +2163,6 @@ vc4_hdmi_encoder_mode_valid(struct drm_encoder *encoder,
 			    const struct drm_display_mode *mode)
 {
 	struct vc4_hdmi *vc4_hdmi = encoder_to_vc4_hdmi(encoder);
-	const struct drm_connector *connector = &vc4_hdmi->connector;
-	struct vc4_dev *vc4 = to_vc4_dev(connector->dev);
 
 	if (vc4_hdmi->variant->unsupported_odd_h_timings &&
 	    !(mode->flags & DRM_MODE_FLAG_DBLCLK) &&
@@ -2172,12 +2170,7 @@ vc4_hdmi_encoder_mode_valid(struct drm_encoder *encoder,
 	     (mode->hsync_end % 2) || (mode->htotal % 2)))
 		return MODE_H_ILLEGAL;
 
-	if (mode->hdisplay > 3840 && mode->vdisplay >= 2160 &&
-	    drm_mode_vrefresh(mode) >= 50 &&
-	    !vc4->hvs->vc5_hdmi_enable_4096by2160)
-		return MODE_CLOCK_HIGH;
-
-	return vc4_hdmi_encoder_clock_valid(vc4_hdmi, mode->clock * 1000);
+	return vc4_hdmi_encoder_clock_valid(vc4_hdmi, mode, mode->clock * 1000);
 }
 
 static const struct drm_encoder_helper_funcs vc4_hdmi_encoder_helper_funcs = {
