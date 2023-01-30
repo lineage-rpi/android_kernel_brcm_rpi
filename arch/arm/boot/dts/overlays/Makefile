@@ -42,7 +42,9 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
 	cap1106.dtbo \
 	chipdip-dac.dtbo \
 	cirrus-wm5102.dtbo \
+	cm-swap-i2c0.dtbo \
 	cma.dtbo \
+	crystalfontz-cfa050_pi_m.dtbo \
 	cutiepi-panel.dtbo \
 	dacberry400.dtbo \
 	dht11.dtbo \
@@ -50,6 +52,7 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
 	dionaudio-loco.dtbo \
 	dionaudio-loco-v2.dtbo \
 	disable-bt.dtbo \
+	disable-emmc2.dtbo \
 	disable-wifi.dtbo \
 	dpi18.dtbo \
 	dpi18cpadhi.dtbo \
