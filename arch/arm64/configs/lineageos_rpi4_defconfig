@@ -1,6 +1,6 @@
 #
 # Automatically generated file; DO NOT EDIT.
-# Linux/arm64 5.15.84 Kernel Configuration
+# Linux/arm64 5.15.89 Kernel Configuration
 #
 CONFIG_CC_VERSION_TEXT="Android (8508608, based on r450784e) clang version 14.0.7 (https://android.googlesource.com/toolchain/llvm-project 4c603efb0cca074e9238af8b4106c30add4418f6)"
 CONFIG_GCC_VERSION=0
@@ -3635,6 +3635,7 @@ CONFIG_VIDEO_IMX477=y
 # CONFIG_VIDEO_IMX355 is not set
 # CONFIG_VIDEO_IMX412 is not set
 # CONFIG_VIDEO_IMX519 is not set
+# CONFIG_VIDEO_IMX708 is not set
 # CONFIG_VIDEO_OV02A10 is not set
 # CONFIG_VIDEO_OV2311 is not set
 # CONFIG_VIDEO_OV2640 is not set
@@ -5383,7 +5384,6 @@ CONFIG_EXTCON=y
 # CONFIG_EXTCON_RT8973A is not set
 # CONFIG_EXTCON_SM5502 is not set
 # CONFIG_EXTCON_USB_GPIO is not set
-# CONFIG_EXTCON_USBC_TUSB320 is not set
 # CONFIG_MEMORY is not set
 CONFIG_IIO=y
 CONFIG_IIO_BUFFER=y
