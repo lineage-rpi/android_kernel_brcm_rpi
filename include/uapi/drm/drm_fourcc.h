@@ -332,13 +332,6 @@ extern "C" {
 #define DRM_FORMAT_Q401		fourcc_code('Q', '4', '0', '1')
 
 /*
- * 2 plane YCbCr MSB aligned, 3 pixels packed into 4 bytes.
- * index 0 = Y plane, [31:0] x:Y2:Y1:Y0 2:10:10:10 little endian
- * index 1 = Cr:Cb plane, [63:0] x:Cr2:Cb2:Cr1:x:Cb1:Cr0:Cb0 [2:10:10:10:2:10:10:10] little endian
- */
-#define DRM_FORMAT_P030		fourcc_code('P', '0', '3', '0') /* 2x2 subsampled Cr:Cb plane 10 bits per channel packed */
-
-/*
  * 3 plane YCbCr
  * index 0: Y plane, [7:0] Y
  * index 1: Cb plane, [7:0] Cb
