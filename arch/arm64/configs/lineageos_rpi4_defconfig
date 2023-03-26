@@ -3696,7 +3696,7 @@ CONFIG_VIDEO_OV5647=y
 # CONFIG_VIDEO_AK7375 is not set
 # CONFIG_VIDEO_DW9714 is not set
 # CONFIG_VIDEO_DW9768 is not set
-# CONFIG_VIDEO_DW9807_VCM is not set
+CONFIG_VIDEO_DW9807_VCM=y
 # end of Lens drivers
 
 #
