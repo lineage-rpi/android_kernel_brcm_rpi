@@ -1,6 +1,6 @@
 #
 # Automatically generated file; DO NOT EDIT.
-# Linux/arm 5.4.228 Kernel Configuration
+# Linux/arm 5.4.242 Kernel Configuration
 #
 CONFIG_CC_VERSION_TEXT="real-arm-linux-androideabi-gcc (GCC) 4.9.x 20150123 (prerelease)"
 CONFIG_CC_IS_GCC=y
@@ -1226,7 +1226,6 @@ CONFIG_NET_SCH_INGRESS=y
 #
 CONFIG_NET_CLS=y
 # CONFIG_NET_CLS_BASIC is not set
-# CONFIG_NET_CLS_TCINDEX is not set
 # CONFIG_NET_CLS_ROUTE4 is not set
 # CONFIG_NET_CLS_FW is not set
 CONFIG_NET_CLS_U32=y
@@ -3545,7 +3544,6 @@ CONFIG_DRM_VC4=y
 CONFIG_DRM_VC4_HDMI_CEC=y
 # CONFIG_DRM_ETNAVIV is not set
 # CONFIG_DRM_ARCPGU is not set
-# CONFIG_DRM_MXSFB is not set
 # CONFIG_DRM_GM12U320 is not set
 # CONFIG_TINYDRM_HX8357D is not set
 # CONFIG_TINYDRM_ILI9225 is not set
@@ -4453,6 +4451,7 @@ CONFIG_MMC_SDHCI_IPROC=y
 CONFIG_NEW_LEDS=y
 CONFIG_LEDS_CLASS=y
 # CONFIG_LEDS_CLASS_FLASH is not set
+# CONFIG_LEDS_CLASS_MULTICOLOR is not set
 # CONFIG_LEDS_BRIGHTNESS_HW_CHANGED is not set
 
 #
