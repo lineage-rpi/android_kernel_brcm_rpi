@@ -63,7 +63,7 @@ static const struct usb_device_id id_table[] = {
 	{DEVICE_G1K(0x05c6, 0x9202)},	/* Generic Gobi Modem device */
 	{DEVICE_G1K(0x05c6, 0x9203)},	/* Generic Gobi Modem device */
 	{DEVICE_G1K(0x05c6, 0x9222)},	/* Generic Gobi Modem device */
-	{DEVICE_G1K(0x05c6, 0x9008)},	/* Generic Gobi QDL device */
+	//{DEVICE_G1K(0x05c6, 0x9008)},	/* Generic Gobi QDL device */
 	{DEVICE_G1K(0x05c6, 0x9009)},	/* Generic Gobi Modem device */
 	{DEVICE_G1K(0x05c6, 0x9201)},	/* Generic Gobi QDL device */
 	{DEVICE_G1K(0x05c6, 0x9221)},	/* Generic Gobi QDL device */

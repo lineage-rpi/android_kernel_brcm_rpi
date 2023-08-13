@@ -548,6 +548,11 @@ config USB_NET_QMI_WWAN
 	  To compile this driver as a module, choose M here: the
 	  module will be called qmi_wwan.
 
+config USB_NET_QMI_WWAN_QUECTEL
+	tristate "QMI WWAN driver for Quectel modems"
+	depends on USB_USBNET
+	select USB_WDM
+
 config USB_HSO
 	tristate "Option USB High Speed Mobile Devices"
 	depends on USB && RFKILL && TTY
