@@ -625,6 +625,31 @@ static void option_instat_callback(struct urb *urb);
 
 
 static const struct usb_device_id option_ids[] = {
+#if 1 //Added by Quectel
+	{ USB_DEVICE(0x05C6, 0x9090) }, /* Quectel UC15 */
+	{ USB_DEVICE(0x05C6, 0x9003) }, /* Quectel UC20 */
+	{ USB_DEVICE(0x05C6, 0x9215) }, /* Quectel EC20(MDM9215) */
+	{ USB_DEVICE(0x2C7C, 0x0125) }, /* Quectel EC20(MDM9x07)/EC25/EG25 */
+	{ USB_DEVICE(0x2C7C, 0x0121) }, /* Quectel EC21 */
+	{ USB_DEVICE(0x2C7C, 0x0191) }, /* Quectel EG91 */
+	{ USB_DEVICE(0x2C7C, 0x0195) }, /* Quectel EG95 */
+	{ USB_DEVICE(0x2C7C, 0x0306) }, /* Quectel EG06/EP06/EM06 */
+	{ USB_DEVICE(0x2C7C, 0x030B) }, /* Quectel EG065K/EG060K */
+	{ USB_DEVICE(0x2C7C, 0x0512) }, /* Quectel EG12/EP12/EM12/EG16/EG18 */
+	{ USB_DEVICE(0x2C7C, 0x0296) }, /* Quectel BG96 */
+	{ USB_DEVICE(0x2C7C, 0x0700) }, /* Quectel BG95/BG77/BG600L-M3/BC69 */
+	{ USB_DEVICE(0x2C7C, 0x0435) }, /* Quectel AG35 */
+	{ USB_DEVICE(0x2C7C, 0x0415) }, /* Quectel AG15 */
+	{ USB_DEVICE(0x2C7C, 0x0452) }, /* Quectel AG520 */
+	{ USB_DEVICE(0x2C7C, 0x0455) }, /* Quectel AG550 */
+	{ USB_DEVICE(0x2C7C, 0x0620) }, /* Quectel EG20 */
+	{ USB_DEVICE(0x2C7C, 0x0800) }, /* Quectel RG500/RM500/RG510/RM510 */
+	{ USB_DEVICE(0x2C7C, 0x0801) }, /* Quectel RG520/RM520/SG520 */
+	{ USB_DEVICE(0x2C7C, 0x6026) }, /* Quectel EC200 */
+	{ USB_DEVICE(0x2C7C, 0x6120) }, /* Quectel UC200 */
+	{ USB_DEVICE(0x2C7C, 0x6000) }, /* Quectel EC200/UC200 */
+	{ .match_flags = USB_DEVICE_ID_MATCH_VENDOR, .idVendor = 0x2C7C }, /* Match All Quectel Modules */
+#endif
 	{ USB_DEVICE(OPTION_VENDOR_ID, OPTION_PRODUCT_COLT) },
 	{ USB_DEVICE(OPTION_VENDOR_ID, OPTION_PRODUCT_RICOLA) },
 	{ USB_DEVICE(OPTION_VENDOR_ID, OPTION_PRODUCT_RICOLA_LIGHT) },
@@ -2292,6 +2317,9 @@ static struct usb_serial_driver option_1port_device = {
 #ifdef CONFIG_PM
 	.suspend           = usb_wwan_suspend,
 	.resume            = usb_wwan_resume,
+#if 1 //Added by Quectel
+	.reset_resume = usb_wwan_resume,
+#endif
 #endif
 };
 
@@ -2315,6 +2343,35 @@ static int option_probe(struct usb_serial *serial,
 	struct usb_interface_descriptor *iface_desc =
 				&serial->interface->cur_altsetting->desc;
 	unsigned long device_flags = id->driver_info;
+
+#if 1 //Added by Quectel
+	//Quectel UC20's interface 4 can be used as USB Network device
+	if (serial->dev->descriptor.idVendor == cpu_to_le16(0x05C6) && serial->dev->descriptor.idProduct == cpu_to_le16(0x9003)
+		&& serial->interface->cur_altsetting->desc.bInterfaceNumber >= 4)
+		return -ENODEV;
+
+	//Quectel EC20(MDM9215)'s interface 4 can be used as USB Network device
+	if (serial->dev->descriptor.idVendor == cpu_to_le16(0x05C6) && serial->dev->descriptor.idProduct == cpu_to_le16(0x9215)
+		&& serial->interface->cur_altsetting->desc.bInterfaceNumber >= 4)
+		return -ENODEV;
+
+	if (serial->dev->descriptor.idVendor == cpu_to_le16(0x2C7C)) {
+		__u16 idProduct = le16_to_cpu(serial->dev->descriptor.idProduct);
+		struct usb_interface_descriptor *intf = &serial->interface->cur_altsetting->desc;
+
+		if (intf->bInterfaceClass != 0xFF || intf->bInterfaceSubClass == 0x42) {
+			//ECM, RNDIS, NCM, MBIM, ACM, UAC, ADB
+			return -ENODEV;
+		}
+
+		if ((idProduct&0xF000) == 0x0000) {
+			//MDM interface 4 is QMI
+			if (intf->bInterfaceNumber == 4 && intf->bNumEndpoints == 3
+				&& intf->bInterfaceSubClass == 0xFF && intf->bInterfaceProtocol == 0xFF)
+				return -ENODEV;
+		}
+	}
+#endif
 
 	/* Never bind to the CD-Rom emulation interface	*/
 	if (iface_desc->bInterfaceClass == USB_CLASS_MASS_STORAGE)
