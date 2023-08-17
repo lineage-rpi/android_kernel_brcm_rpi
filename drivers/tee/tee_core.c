@@ -96,8 +96,10 @@ void teedev_ctx_put(struct tee_context *ctx)
 
 static void teedev_close_context(struct tee_context *ctx)
 {
-	tee_device_put(ctx->teedev);
+	struct tee_device *teedev = ctx->teedev;
+
 	teedev_ctx_put(ctx);
+	tee_device_put(teedev);
 }
 
 static int tee_release(struct inode *inode, struct file *filp)
@@ -172,6 +174,10 @@ tee_ioctl_shm_register(struct tee_context *ctx,
 	/* Currently no input flags are supported */
 	if (data.flags)
 		return -EINVAL;
+
+	if (!access_ok(VERIFY_WRITE, (void __user *)(unsigned long)data.addr,
+		       data.length))
+		return -EFAULT;
 
 	shm = tee_shm_register(ctx, data.addr, data.length,
 			       TEE_SHM_DMA_BUF | TEE_SHM_USER_MAPPED);

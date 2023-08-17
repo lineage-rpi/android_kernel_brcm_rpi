@@ -169,8 +169,9 @@ static struct line6_pcm_properties pod_pcm_properties = {
 	.bytes_per_channel = 3 /* SNDRV_PCM_FMTBIT_S24_3LE */
 };
 
+
 static const char pod_version_header[] = {
-	0xf2, 0x7e, 0x7f, 0x06, 0x02
+	0xf0, 0x7e, 0x7f, 0x06, 0x02
 };
 
 /* forward declarations: */
@@ -417,11 +418,6 @@ static int pod_init(struct usb_line6 *line6,
 
 	/* create sysfs entries: */
 	err = snd_card_add_dev_attr(line6->card, &pod_dev_attr_group);
-	if (err < 0)
-		return err;
-
-	/* initialize MIDI subsystem: */
-	err = line6_init_midi(line6);
 	if (err < 0)
 		return err;
 

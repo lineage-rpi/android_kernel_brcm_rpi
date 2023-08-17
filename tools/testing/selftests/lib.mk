@@ -1,6 +1,10 @@
 # This mimics the top-level Makefile. We do it explicitly here so that this
 # Makefile can operate with or without the kbuild infrastructure.
+ifneq ($(LLVM),)
+CC := clang
+else
 CC := $(CROSS_COMPILE)gcc
+endif
 
 ifeq (0,$(MAKELEVEL))
 OUTPUT := $(shell pwd)
@@ -22,6 +26,7 @@ include $(top_srcdir)/scripts/subarch.include
 ARCH		?= $(SUBARCH)
 
 .PHONY: khdr
+.NOTPARALLEL:
 khdr:
 	make ARCH=$(ARCH) -C $(top_srcdir) headers_install
 
@@ -138,6 +143,11 @@ endef
 
 clean:
 	$(CLEAN)
+
+# Enables to extend CFLAGS and LDFLAGS from command line, e.g.
+# make USERCFLAGS=-Werror USERLDFLAGS=-static
+CFLAGS += $(USERCFLAGS)
+LDFLAGS += $(USERLDFLAGS)
 
 # When make O= with kselftest target from main level
 # the following aren't defined.
