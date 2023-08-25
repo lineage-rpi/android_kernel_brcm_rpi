@@ -1,6 +1,6 @@
 #
 # Automatically generated file; DO NOT EDIT.
-# Linux/arm64 5.15.122 Kernel Configuration
+# Linux/arm64 5.15.123 Kernel Configuration
 #
 CONFIG_CC_VERSION_TEXT="Android (8508608, based on r450784e) clang version 14.0.7 (https://android.googlesource.com/toolchain/llvm-project 4c603efb0cca074e9238af8b4106c30add4418f6)"
 CONFIG_GCC_VERSION=0
@@ -373,6 +373,7 @@ CONFIG_ARM64_WORKAROUND_TSB_FLUSH_FAILURE=y
 CONFIG_ARM64_ERRATUM_2054223=y
 CONFIG_ARM64_ERRATUM_2067961=y
 CONFIG_ARM64_ERRATUM_2441009=y
+CONFIG_ARM64_ERRATUM_2457168=y
 # CONFIG_CAVIUM_ERRATUM_22375 is not set
 # CONFIG_CAVIUM_ERRATUM_23154 is not set
 CONFIG_FUJITSU_ERRATUM_010001=y
