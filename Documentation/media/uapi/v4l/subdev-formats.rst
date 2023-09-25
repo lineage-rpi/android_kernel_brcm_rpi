@@ -5792,43 +5792,6 @@ the following codes.
       - u\ :sub:`2`
       - u\ :sub:`1`
       - u\ :sub:`0`
-    * .. _MEDIA-BUS-FMT-Y14-1X14:
-
-      - MEDIA_BUS_FMT_Y14_1X14
-      - 0x202d
-      -
-      -
-      -
-      -
-      -
-      -
-      -
-      -
-      -
-      -
-      -
-      -
-      -
-      -
-      -
-      -
-      -
-      -
-      -
-      - y\ :sub:`13`
-      - y\ :sub:`12`
-      - y\ :sub:`11`
-      - y\ :sub:`10`
-      - y\ :sub:`9`
-      - y\ :sub:`8`
-      - y\ :sub:`7`
-      - y\ :sub:`6`
-      - y\ :sub:`5`
-      - y\ :sub:`4`
-      - y\ :sub:`3`
-      - y\ :sub:`2`
-      - y\ :sub:`1`
-      - y\ :sub:`0`
     * .. _MEDIA-BUS-FMT-UYVY8-1X16:
 
       - MEDIA_BUS_FMT_UYVY8_1X16
@@ -7832,9 +7795,34 @@ formats.
       - Interleaved raw UYVY and JPEG image format with embedded meta-data
 	used by Samsung S3C73MX camera sensors.
 
-
+.. _v4l2-mbus-metadata-fmts:
 
 .. _v4l2-mbus-sensor-data:
+
+Metadata Formats
+^^^^^^^^^^^^^^^^
+
+This section lists all metadata formats.
+
+The following table lists the existing metadata formats.
+
+.. tabularcolumns:: |p{8.0cm}|p{1.4cm}|p{7.7cm}|
+
+.. flat-table:: Metadata formats
+    :header-rows:  1
+    :stub-columns: 0
+
+    * - Identifier
+      - Code
+      - Comments
+    * .. _MEDIA-BUS-FMT-METADATA-FIXED:
+
+      - MEDIA_BUS_FMT_METADATA_FIXED
+      - 0x7001
+      - This format should be used when the same driver handles
+	both sides of the link and the bus format is a fixed
+	metadata format that is not configurable from userspace.
+	Width and height will be set to 0 for this format.
 
 Sensor Ancillary Metadata Formats
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -7859,8 +7847,7 @@ The following table lists the existing sensor ancillary metadata formats:
     * .. _MEDIA_BUS_FMT_SENSOR_DATA:
 
       - MEDIA_BUS_FMT_SENSOR_DATA
-      - 0x7001
+      - 0x8001
       - Sensor vendor specific ancillary metadata. Some vendors follow a generic
         CSI-2/SMIA embedded data format as described in the `CSI-2 specification.
-	<https://mipi.org/specifications/csi-2>`_
-
+       <https://mipi.org/specifications/csi-2>`_
