@@ -1,6 +1,6 @@
 #
 # Automatically generated file; DO NOT EDIT.
-# Linux/arm 5.4.242 Kernel Configuration
+# Linux/arm 5.4.256 Kernel Configuration
 #
 CONFIG_CC_VERSION_TEXT="real-arm-linux-androideabi-gcc (GCC) 4.9.x 20150123 (prerelease)"
 CONFIG_CC_IS_GCC=y
@@ -645,6 +645,7 @@ CONFIG_GENERIC_IDLE_POLL_SETUP=y
 CONFIG_ARCH_HAS_FORTIFY_SOURCE=y
 CONFIG_ARCH_HAS_KEEPINITRD=y
 CONFIG_ARCH_HAS_SET_MEMORY=y
+CONFIG_ARCH_HAS_CPU_FINALIZE_INIT=y
 CONFIG_HAVE_ARCH_THREAD_STRUCT_WHITELIST=y
 CONFIG_ARCH_32BIT_OFF_T=y
 CONFIG_HAVE_REGS_AND_STACK_ACCESS_API=y
@@ -1177,7 +1178,6 @@ CONFIG_L2TP_V3=y
 CONFIG_HAVE_NET_DSA=y
 # CONFIG_NET_DSA is not set
 # CONFIG_VLAN_8021Q is not set
-# CONFIG_DECNET is not set
 # CONFIG_LLC2 is not set
 # CONFIG_ATALK is not set
 # CONFIG_X25 is not set
@@ -1665,6 +1665,7 @@ CONFIG_SCSI_LOWLEVEL=y
 # CONFIG_SCSI_AIC94XX is not set
 # CONFIG_SCSI_MVSAS is not set
 # CONFIG_SCSI_MVUMI is not set
+# CONFIG_SCSI_DPT_I2O is not set
 # CONFIG_SCSI_ADVANSYS is not set
 # CONFIG_SCSI_ARCMSR is not set
 # CONFIG_SCSI_ESAS2R is not set
@@ -1727,7 +1728,6 @@ CONFIG_DM_UEVENT=y
 # CONFIG_DM_FLAKEY is not set
 CONFIG_DM_VERITY=y
 # CONFIG_DM_VERITY_VERIFY_ROOTHASH_SIG is not set
-# CONFIG_DM_VERITY_AVB is not set
 CONFIG_DM_VERITY_FEC=y
 # CONFIG_DM_SWITCH is not set
 # CONFIG_DM_LOG_WRITES is not set
@@ -5065,6 +5065,11 @@ CONFIG_IIO_ST_ACCEL_SPI_3AXIS=y
 # CONFIG_VF610_ADC is not set
 # CONFIG_XILINX_XADC is not set
 # end of Analog to digital converters
+
+#
+# Analog to digital and digital to analog converters
+#
+# end of Analog to digital and digital to analog converters
 
 #
 # Analog Front Ends
