@@ -146,7 +146,7 @@ static int usb_string_copy(const char *s, char **s_copy)
 	char *str;
 	char *copy = *s_copy;
 	ret = strlen(s);
-	if (ret > USB_MAX_STRING_LEN)
+	if (ret > 126)
 		return -EOVERFLOW;
 
 	str = kstrdup(s, GFP_KERNEL);
