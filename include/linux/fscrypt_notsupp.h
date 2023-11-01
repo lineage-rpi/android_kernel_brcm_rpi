@@ -24,6 +24,11 @@ static inline bool fscrypt_dummy_context_enabled(struct inode *inode)
 	return false;
 }
 
+static inline bool fscrypt_is_nokey_name(const struct dentry *dentry)
+{
+	return false;
+}
+
 /* crypto.c */
 static inline void fscrypt_enqueue_decrypt_work(struct work_struct *work)
 {
@@ -227,6 +232,12 @@ static inline const char *fscrypt_get_symlink(struct inode *inode,
 					      struct delayed_call *done)
 {
 	return ERR_PTR(-EOPNOTSUPP);
+}
+
+static inline int fscrypt_symlink_getattr(const struct path *path,
+					  struct kstat *stat)
+{
+	return -EOPNOTSUPP;
 }
 
 #endif	/* _LINUX_FSCRYPT_NOTSUPP_H */
