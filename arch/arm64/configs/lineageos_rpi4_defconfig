@@ -1,6 +1,6 @@
 #
 # Automatically generated file; DO NOT EDIT.
-# Linux/arm64 5.15.139 Kernel Configuration
+# Linux/arm64 5.15.140 Kernel Configuration
 #
 CONFIG_CC_VERSION_TEXT="Android (8508608, based on r450784e) clang version 14.0.7 (https://android.googlesource.com/toolchain/llvm-project 4c603efb0cca074e9238af8b4106c30add4418f6)"
 CONFIG_GCC_VERSION=0
@@ -394,7 +394,6 @@ CONFIG_ARM64_VA_BITS_39=y
 CONFIG_ARM64_VA_BITS=39
 CONFIG_ARM64_PA_BITS_48=y
 CONFIG_ARM64_PA_BITS=48
-# CONFIG_CPU_BIG_ENDIAN is not set
 CONFIG_CPU_LITTLE_ENDIAN=y
 # CONFIG_SCHED_MC is not set
 # CONFIG_SCHED_SMT is not set
