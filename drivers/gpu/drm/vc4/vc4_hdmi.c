@@ -94,6 +94,9 @@ struct vc4_hdmi {
 	struct cec_msg cec_rx_msg;
 	bool cec_tx_ok;
 	bool cec_irq_was_rx;
+	/* HSM rate the CEC clock divider was last set for, under cec_adap->lock */
+	unsigned long cec_hsm_rate;
+	struct notifier_block cec_hsm_nb;
 
 	struct clk *pixel_clock;
 	struct clk *hsm_clock;
@@ -1244,6 +1247,48 @@ static irqreturn_t vc4_cec_irq_handler(int irq, void *priv)
 	return IRQ_WAKE_THREAD;
 }
 
+/*
+ * The CEC bit clock is the HSM clock divided by (DIV_CLK_CNT + 1), so the
+ * divider has to follow the rate HSM actually runs at. That is not always
+ * HSM_CLOCK_FREQ: clk_set_rate() in vc4_hdmi_bind() picks whichever parent
+ * gets closest, and when that is pllh_aux, every mode set that changes PLLH
+ * for the pixel clock moves HSM with it. With a stale divider all CEC
+ * timings are off and other devices on the bus ignore what we send.
+ */
+static void vc4_hdmi_cec_update_clk_div(struct vc4_dev *vc4)
+{
+	unsigned long rate = vc4->hdmi->cec_hsm_rate;
+	u32 cnt, value;
+
+	if (!rate)
+		return;
+	cnt = DIV_ROUND_CLOSEST(rate, CEC_CLOCK_FREQ) - 1;
+	value = HDMI_READ(VC4_HDMI_CEC_CNTRL_1);
+	value &= ~VC4_HDMI_CEC_DIV_CLK_CNT_MASK;
+	value |= (cnt << VC4_HDMI_CEC_DIV_CLK_CNT_SHIFT) &
+		 VC4_HDMI_CEC_DIV_CLK_CNT_MASK;
+	HDMI_WRITE(VC4_HDMI_CEC_CNTRL_1, value);
+	DRM_DEBUG_DRIVER("CEC clock divider %u for HSM at %lu Hz\n", cnt, rate);
+}
+
+static int vc4_hdmi_cec_hsm_notify(struct notifier_block *nb,
+				   unsigned long event, void *data)
+{
+	struct vc4_hdmi *hdmi = container_of(nb, struct vc4_hdmi, cec_hsm_nb);
+	struct clk_notifier_data *ndata = data;
+	struct vc4_dev *vc4 = cec_get_drvdata(hdmi->cec_adap);
+
+	if (event != POST_RATE_CHANGE)
+		return NOTIFY_DONE;
+
+	mutex_lock(&hdmi->cec_adap->lock);
+	hdmi->cec_hsm_rate = ndata->new_rate;
+	vc4_hdmi_cec_update_clk_div(vc4);
+	mutex_unlock(&hdmi->cec_adap->lock);
+
+	return NOTIFY_OK;
+}
+
 static int vc4_hdmi_cec_adap_enable(struct cec_adapter *adap, bool enable)
 {
 	struct vc4_dev *vc4 = cec_get_drvdata(adap);
@@ -1258,6 +1303,7 @@ static int vc4_hdmi_cec_adap_enable(struct cec_adapter *adap, bool enable)
 	       ((4500 / usecs) << VC4_HDMI_CEC_CNT_TO_4500_US_SHIFT);
 
 	if (enable) {
+		vc4_hdmi_cec_update_clk_div(vc4);
 		HDMI_WRITE(VC4_HDMI_CEC_CNTRL_5, val |
 			   VC4_HDMI_CEC_TX_SW_RESET | VC4_HDMI_CEC_RX_SW_RESET);
 		HDMI_WRITE(VC4_HDMI_CEC_CNTRL_5, val);
@@ -1452,16 +1498,14 @@ static int vc4_hdmi_bind(struct device *dev, struct device *master, void *data)
 	if (ret < 0)
 		goto err_destroy_conn;
 	HDMI_WRITE(VC4_HDMI_CPU_MASK_SET, 0xffffffff);
-	value = HDMI_READ(VC4_HDMI_CEC_CNTRL_1);
-	value &= ~VC4_HDMI_CEC_DIV_CLK_CNT_MASK;
 	/*
-	 * Set the logical address to Unregistered and set the clock
-	 * divider: the hsm_clock rate and this divider setting will
-	 * give a 40 kHz CEC clock.
+	 * Set the logical address to Unregistered, and set the clock divider
+	 * for a 40 kHz CEC clock from the rate HSM actually runs at.
 	 */
-	value |= VC4_HDMI_CEC_ADDR_MASK |
-		 (4091 << VC4_HDMI_CEC_DIV_CLK_CNT_SHIFT);
-	HDMI_WRITE(VC4_HDMI_CEC_CNTRL_1, value);
+	value = HDMI_READ(VC4_HDMI_CEC_CNTRL_1);
+	HDMI_WRITE(VC4_HDMI_CEC_CNTRL_1, value | VC4_HDMI_CEC_ADDR_MASK);
+	hdmi->cec_hsm_rate = clk_get_rate(hdmi->hsm_clock) ?: HSM_CLOCK_FREQ;
+	vc4_hdmi_cec_update_clk_div(vc4);
 	ret = devm_request_threaded_irq(dev, platform_get_irq(pdev, 0),
 					vc4_cec_irq_handler,
 					vc4_cec_irq_handler_thread, 0,
@@ -1476,6 +1520,13 @@ static int vc4_hdmi_bind(struct device *dev, struct device *master, void *data)
 	ret = vc4_hdmi_audio_init(hdmi);
 	if (ret)
 		goto err_destroy_encoder;
+
+#ifdef CONFIG_DRM_VC4_HDMI_CEC
+	/* Keep the CEC clock divider right when HSM changes rate later. */
+	hdmi->cec_hsm_nb.notifier_call = vc4_hdmi_cec_hsm_notify;
+	if (clk_notifier_register(hdmi->hsm_clock, &hdmi->cec_hsm_nb))
+		hdmi->cec_hsm_nb.notifier_call = NULL;
+#endif
 
 	return 0;
 
@@ -1503,6 +1554,10 @@ static void vc4_hdmi_unbind(struct device *dev, struct device *master,
 	struct vc4_dev *vc4 = drm->dev_private;
 	struct vc4_hdmi *hdmi = vc4->hdmi;
 
+#ifdef CONFIG_DRM_VC4_HDMI_CEC
+	if (hdmi->cec_hsm_nb.notifier_call)
+		clk_notifier_unregister(hdmi->hsm_clock, &hdmi->cec_hsm_nb);
+#endif
 	cec_unregister_adapter(hdmi->cec_adap);
 	vc4_hdmi_connector_destroy(hdmi->connector);
 	vc4_hdmi_encoder_destroy(hdmi->encoder);
